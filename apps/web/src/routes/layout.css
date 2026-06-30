@@ -1,0 +1,55 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/forms';
+@plugin '@tailwindcss/typography';
+
+/* ── Geist Design System — dark theme ──────────────────────────────
+   Foundations imported from the "Geist Design System" Claude Design
+   project. Restrained color, generous whitespace, near-neutral surfaces.
+   Color signals state and hierarchy — never decoration. */
+@theme {
+	--font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+	--font-mono: 'Geist Mono', ui-monospace, 'SF Mono', 'Menlo', monospace;
+
+	/* Text — primary → faint */
+	--color-ink: #ededed;
+	--color-ink-muted: #a0a0a0;
+	--color-ink-subtle: #8f8f8f;
+	--color-ink-faint: #7d7d7d;
+
+	/* Surfaces & lines */
+	--color-surface: #0e0e0e;
+	--color-surface-raised: #1a1a1a;
+	--color-line: #1f1f1f;
+	--color-line-soft: #161616;
+
+	/* Accents — carry meaning, not decoration */
+	--color-accent: #47a8ff;
+	--color-success: #00ca50;
+	--color-danger: #e2162a;
+
+	/* Geist radii: 6px controls · 12px menus · 16px surfaces */
+	--radius-geist: 6px;
+	--radius-geist-lg: 12px;
+
+	/* Geist motion easing */
+	--ease-geist: cubic-bezier(0.175, 0.885, 0.32, 1.1);
+}
+
+@layer base {
+	html {
+		background-color: #000;
+	}
+
+	body {
+		background-color: #000;
+		color: var(--color-ink);
+		font-family: var(--font-sans);
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+	}
+
+	::selection {
+		background: #003674;
+		color: #eaf6ff;
+	}
+}
