@@ -26,7 +26,7 @@ sleep 40
 URL=""
 for i in $(seq 1 18); do
   URL="$( { cd "$WEB" && vercel ls "$PROJECT" 2>/dev/null \
-    | grep '● Ready' \
+    | grep Ready \
     | grep -oE 'https://boring-computers-[a-z0-9]+-goshen-labs\.vercel\.app' \
     | head -1; } || true )"
   [ -n "$URL" ] && break
