@@ -65,3 +65,22 @@ export type Machine = {
 	expires_at?: string;
 	display?: boolean;
 };
+
+/** Fetch an existing machine by id (for reconnecting to a shared session). */
+export async function getMachine(id: string): Promise<Machine> {
+	const res = await fetch(`${apiBase}/v1/machines/${encodeURIComponent(id)}`);
+	if (res.status === 404) throw new Error('this computer has expired');
+	if (!res.ok) throw new Error(`the datacenter returned ${res.status}`);
+	return (await res.json()) as Machine;
+}
+
+/** How many computers are running right now (from /healthz). 0 on any error. */
+export async function fleetCount(): Promise<number> {
+	try {
+		const res = await fetch(`${apiBase}/healthz`);
+		const j = await res.json();
+		return typeof j?.machines === 'number' ? j.machines : 0;
+	} catch {
+		return 0;
+	}
+}

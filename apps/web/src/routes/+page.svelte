@@ -1,10 +1,20 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Computer from '$lib/Computer.svelte';
 	import Desktop from '$lib/Desktop.svelte';
 	import Agent from '$lib/Agent.svelte';
+	import { fleetCount } from '$lib/boring';
 
 	type Mode = null | 'shell' | 'desktop' | 'agent';
 	let mode = $state<Mode>(null);
+
+	let fleet = $state(0);
+	onMount(() => {
+		const tick = async () => (fleet = await fleetCount());
+		void tick();
+		const t = setInterval(tick, 4000);
+		return () => clearInterval(t);
+	});
 
 	// Session length for the shell + desktop (clamped server-side to 15–900s).
 	const LENGTHS = [
@@ -94,6 +104,14 @@
 					or watch an AI use one →
 				</button>
 			</div>
+
+			{#if fleet > 0}
+				<p class="font-mono text-[11px] text-ink-faint">
+					<span class="text-success">●</span>
+					{fleet}
+					{fleet === 1 ? 'computer' : 'computers'} running right now
+				</p>
+			{/if}
 		</div>
 	{/if}
 </div>

@@ -1,15 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { apiBase, wsUrl, createMachine, type Machine } from '$lib/boring';
+	import { apiBase, wsUrl, createMachine, getMachine, type Machine } from '$lib/boring';
 
 	type Phase = 'idle' | 'booting' | 'connecting' | 'live' | 'closed' | 'error';
 
-	let { onClose, ttl = 180 }: { onClose?: () => void; ttl?: number } = $props();
+	let {
+		onClose,
+		ttl = 180,
+		machineId
+	}: { onClose?: () => void; ttl?: number; machineId?: string } = $props();
 
 	let phase = $state<Phase>('idle');
 	let machine = $state<Machine | null>(null);
 	let error = $state('');
 	let remaining = $state(0);
+	let shared = $state(false);
+	let copied = $state(false);
 
 	let screen: HTMLDivElement;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,12 +35,13 @@
 		phase = 'booting';
 		error = '';
 		try {
-			machine = await createMachine('desktop', ttl);
+			machine = machineId ? await getMachine(machineId) : await createMachine('desktop', ttl);
 			phase = 'connecting';
 			startCountdown();
-			// The desktop cold-boots X and paints its apps over a few seconds;
-			// wait so noVNC's first full frame already has the desktop on it.
-			setTimeout(connect, 4500);
+			// The desktop cold-boots X and paints its apps over a few seconds; wait
+			// so noVNC's first full frame has the desktop on it. A reconnect is
+			// already painted, so connect quickly.
+			setTimeout(connect, machineId ? 300 : 4500);
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 			phase = 'error';
@@ -90,7 +97,9 @@
 	}
 
 	function startCountdown() {
-		remaining = ttl;
+		remaining = machine?.expires_at
+			? Math.max(0, Math.round((new Date(machine.expires_at).getTime() - Date.now()) / 1000))
+			: ttl;
 		countdown = setInterval(() => {
 			remaining -= 1;
 			if (remaining <= 0) stopCountdown();
@@ -99,6 +108,18 @@
 	function stopCountdown() {
 		if (countdown) clearInterval(countdown);
 		countdown = null;
+	}
+
+	async function copyShare() {
+		if (!machine) return;
+		try {
+			await navigator.clipboard.writeText(`${location.origin}/c/${machine.id}`);
+		} catch {
+			/* ignore */
+		}
+		shared = true; // keep the machine alive for its TTL even if this tab closes
+		copied = true;
+		setTimeout(() => (copied = false), 1600);
 	}
 
 	export function close() {
@@ -110,7 +131,7 @@
 			/* ignore */
 		}
 		rfb = null;
-		if (machine) {
+		if (machine && !shared && !machineId) {
 			void fetch(`${apiBase}/v1/machines/${machine.id}`, { method: 'DELETE' }).catch(() => {});
 		}
 		machine = null;
@@ -145,6 +166,13 @@
 			{/if}
 		</div>
 		<div class="flex items-center gap-3 text-ink-faint">
+			{#if phase === 'live'}
+				<button
+					class="text-ink-subtle transition-colors hover:text-ink"
+					onclick={copyShare}
+					title="Copy a link to this computer">{copied ? 'link copied ✓' : 'share'}</button
+				>
+			{/if}
 			{#if phase === 'live' || phase === 'connecting'}<span>self-destructs in {remaining}s</span
 				>{/if}
 			<button class="text-ink-subtle transition-colors hover:text-ink" onclick={close}>esc ✕</button

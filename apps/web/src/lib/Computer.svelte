@@ -1,16 +1,22 @@
 <script lang="ts">
 	import '@xterm/xterm/css/xterm.css';
 	import { onMount } from 'svelte';
-	import { apiBase, wsUrl, createMachine, type Machine } from '$lib/boring';
+	import { apiBase, wsUrl, createMachine, getMachine, type Machine } from '$lib/boring';
 
 	type Phase = 'idle' | 'booting' | 'live' | 'closed' | 'error';
 
-	let { onClose, ttl = 60 }: { onClose?: () => void; ttl?: number } = $props();
+	let {
+		onClose,
+		ttl = 60,
+		machineId
+	}: { onClose?: () => void; ttl?: number; machineId?: string } = $props();
 
 	let phase = $state<Phase>('idle');
 	let machine = $state<Machine | null>(null);
 	let error = $state('');
 	let remaining = $state(0);
+	let shared = $state(false);
+	let copied = $state(false);
 
 	let host = $state<HTMLDivElement>();
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,7 +38,7 @@
 		phase = 'booting';
 		error = '';
 		try {
-			machine = await createMachine('python', ttl);
+			machine = machineId ? await getMachine(machineId) : await createMachine('python', ttl);
 			await openTerminal(machine!.id);
 			phase = 'live';
 			startCountdown();
@@ -95,7 +101,10 @@
 	}
 
 	function startCountdown() {
-		remaining = ttl;
+		// Prefer the server's expiry (works for both fresh boots and reconnects).
+		remaining = machine?.expires_at
+			? Math.max(0, Math.round((new Date(machine.expires_at).getTime() - Date.now()) / 1000))
+			: ttl;
 		countdown = setInterval(() => {
 			remaining -= 1;
 			if (remaining <= 0) stopCountdown();
@@ -104,6 +113,19 @@
 	function stopCountdown() {
 		if (countdown) clearInterval(countdown);
 		countdown = null;
+	}
+
+	async function copyShare() {
+		if (!machine) return;
+		const url = `${location.origin}/c/${machine.id}`;
+		try {
+			await navigator.clipboard.writeText(url);
+		} catch {
+			/* ignore */
+		}
+		shared = true; // keep the machine alive for its TTL even if this tab closes
+		copied = true;
+		setTimeout(() => (copied = false), 1600);
 	}
 
 	export function close() {
@@ -116,7 +138,9 @@
 			/* ignore */
 		}
 		ws = null;
-		if (machine) {
+		// Don't tear down a shared machine, or one we merely reconnected to — let it
+		// live its TTL for whoever else has the link.
+		if (machine && !shared && !machineId) {
 			void fetch(`${apiBase}/v1/machines/${machine.id}`, { method: 'DELETE' }).catch(() => {});
 		}
 		term?.dispose();
@@ -159,7 +183,14 @@
 				{/if}
 			</div>
 			<div class="flex items-center gap-3 text-ink-faint">
-				{#if phase === 'live'}<span>self-destructs in {remaining}s</span>{/if}
+				{#if phase === 'live'}
+					<button
+						class="text-ink-subtle transition-colors hover:text-ink"
+						onclick={copyShare}
+						title="Copy a link to this computer">{copied ? 'link copied ✓' : 'share'}</button
+					>
+					<span>self-destructs in {remaining}s</span>
+				{/if}
 				<button class="text-ink-subtle transition-colors hover:text-ink" onclick={close}>
 					esc ✕
 				</button>
