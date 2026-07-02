@@ -1,8 +1,9 @@
 <script lang="ts">
 	import Computer from '$lib/Computer.svelte';
 	import Desktop from '$lib/Desktop.svelte';
+	import Agent from '$lib/Agent.svelte';
 
-	type Mode = null | 'shell' | 'desktop';
+	type Mode = null | 'shell' | 'desktop' | 'agent';
 	let mode = $state<Mode>(null);
 
 	function onKeydown(e: KeyboardEvent) {
@@ -34,6 +35,8 @@
 		<Computer onClose={() => (mode = null)} />
 	{:else if mode === 'desktop'}
 		<Desktop onClose={() => (mode = null)} />
+	{:else if mode === 'agent'}
+		<Agent onClose={() => (mode = null)} />
 	{:else}
 		<div class="flex flex-col items-center gap-3">
 			<button
@@ -50,12 +53,20 @@
 				<span class="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-ink-subtle align-middle"
 				></span>
 			</button>
-			<button
-				onclick={() => (mode = 'desktop')}
-				class="font-mono text-[12px] text-ink-faint transition-colors hover:text-ink-muted focus-visible:outline-none"
-			>
-				or spin up a full desktop →
-			</button>
+			<div class="flex items-center gap-4">
+				<button
+					onclick={() => (mode = 'desktop')}
+					class="font-mono text-[12px] text-ink-faint transition-colors hover:text-ink-muted focus-visible:outline-none"
+				>
+					or spin up a full desktop →
+				</button>
+				<button
+					onclick={() => (mode = 'agent')}
+					class="font-mono text-[12px] text-ink-faint transition-colors hover:text-ink-muted focus-visible:outline-none"
+				>
+					or watch an AI use one →
+				</button>
+			</div>
 		</div>
 	{/if}
 </div>

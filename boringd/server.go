@@ -34,6 +34,13 @@ func NewServer(cfg Config, mgr *Manager) *Server {
 	s.mux.HandleFunc("GET /v1/machines/{id}/tty", s.handleTTY)
 	s.mux.HandleFunc("GET /v1/machines/{id}/vnc", s.handleVNC)
 
+	// Debug/agent: capture a PNG screenshot of a desktop machine.
+	s.mux.Handle("GET /v1/machines/{id}/screenshot", s.auth(http.HandlerFunc(s.handleScreenshot)))
+
+	// Computer-use agent: drive a desktop machine toward a goal, streaming
+	// narration over a WebSocket.
+	s.mux.HandleFunc("GET /v1/machines/{id}/agent", s.handleAgent)
+
 	return s
 }
 
