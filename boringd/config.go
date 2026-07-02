@@ -56,7 +56,7 @@ type Config struct {
 // LoadConfig builds a Config from the environment, applying the fixed defaults.
 func LoadConfig() Config {
 	c := Config{
-		Addr:             "0.0.0.0:8080",
+		Addr:             envStr("BORING_ADDR", "0.0.0.0:8080"),
 		Token:            os.Getenv("BORING_TOKEN"),
 		MaxMachines:      envInt("BORING_MAX", 20),
 		FirecrackerBin:   envStr("BORING_FIRECRACKER_BIN", "/opt/boring/bin/firecracker"),
