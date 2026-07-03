@@ -107,7 +107,7 @@ func LoadConfig() Config {
 		InferenceRatePerMin: envInt("BORING_INFER_RATE", 20),
 		AnthropicKey:        os.Getenv("BORING_ANTHROPIC_KEY"),
 		AgentModel:          envStr("BORING_AGENT_MODEL", "claude-opus-4-8"),
-		AgentMaxSteps:       envInt("BORING_AGENT_MAX_STEPS", 12),
+		AgentMaxSteps:       envInt("BORING_AGENT_MAX_STEPS", 18),
 		AgentMaxConcurrent:  envInt("BORING_AGENT_MAX_CONCURRENT", 2),
 		JailerEnable:        os.Getenv("BORING_JAILER") == "1",
 		JailerBin:           envStr("BORING_JAILER_BIN", "/opt/boring/bin/jailer"),

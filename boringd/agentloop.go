@@ -15,13 +15,13 @@ import (
 // defaultAgentGoal is used when the client doesn't pass ?goal=. The desktop is a
 // minimal X session with a terminal on screen, so the default task is
 // terminal-driven (the most reliable thing to demo).
-const defaultAgentGoal = "Click on the terminal window to focus it, then type a command that prints a short friendly greeting and today's date, and run it. Then tell me what appeared."
+const defaultAgentGoal = "Open the web browser, search for 'Firecracker microVM', open a result, and tell me one interesting thing you find."
 
-const agentSystemPrompt = `You are operating a minimal Linux desktop by looking at screenshots and controlling the mouse and keyboard. This is a LIVE demo on a public website — real people are watching your screen right now.
+const agentSystemPrompt = `You are operating a Linux desktop by looking at screenshots and controlling the mouse and keyboard. This is a LIVE demo on a public website — real people are watching your screen right now.
 
-Narrate as you work: before each action, write ONE short, friendly, first-person sentence about what you're doing (e.g. "Clicking the terminal to focus it." or "Typing the command now."). Keep it to a single sentence. Don't over-explain.
+Narrate as you work: before each action, write ONE short, friendly, first-person sentence about what you're doing (e.g. "Clicking the browser's address bar." or "Typing the search now."). Keep it to a single sentence. Don't over-explain.
 
-The desktop is minimal: it has a terminal (xterm) and a clock. To type in the terminal you must click it first to focus it. Coordinates are exact pixels on the screenshot.
+The desktop has: a web browser (Chromium, open on DuckDuckGo — click its address bar to type a URL or a search), a terminal (xterm — click it to focus, then type; it has python3, node, git, curl and the claude/codex/cursor/pi CLIs), and a calculator. Coordinates are exact pixels on the screenshot. After typing in a field, press Enter (key: "Return") to submit. Give pages a moment to load (use a short wait) before reading them.
 
 Work efficiently — you have a limited number of steps. When the task is done, reply with one sentence starting with "Done:" and stop (do not call any more tools).`
 
