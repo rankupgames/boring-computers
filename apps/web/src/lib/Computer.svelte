@@ -95,6 +95,23 @@
 			}
 		};
 		term.onData((d: string) => ws?.readyState === WebSocket.OPEN && ws.send(enc.encode(d)));
+		// Copy the selection with Cmd+C (mac) or Ctrl+Shift+C; a bare Ctrl+C with no
+		// selection still passes through as SIGINT. Paste (Cmd+V / Ctrl+Shift+V) is
+		// handled natively by xterm — the pasted text arrives via onData above.
+		term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+			if (
+				e.type === 'keydown' &&
+				e.key.toLowerCase() === 'c' &&
+				(e.metaKey || (e.ctrlKey && e.shiftKey))
+			) {
+				const sel = term.getSelection();
+				if (sel) {
+					void navigator.clipboard?.writeText(sel).catch(() => {});
+					return false;
+				}
+			}
+			return true;
+		});
 		// Clear the boot/restore scrollback to a clean prompt, then nudge the guest.
 		setTimeout(() => {
 			if (!term) return;
