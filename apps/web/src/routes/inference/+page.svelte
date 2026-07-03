@@ -111,7 +111,7 @@
 	<meta name="description" content="One OpenAI-compatible endpoint for every model." />
 </svelte:head>
 
-<div class="mx-auto flex min-h-screen max-w-2xl flex-col px-5 pt-24 pb-6">
+<div class="mx-auto flex min-h-screen max-w-4xl flex-col px-5 pt-24 pb-6">
 	<div class="mb-4">
 		<h1 class="text-[22px] font-semibold tracking-[-0.03em] text-ink">Inference</h1>
 		<p class="mt-1 text-[13px] leading-relaxed text-ink-muted">
