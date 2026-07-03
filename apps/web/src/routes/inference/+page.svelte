@@ -72,8 +72,9 @@
 						const j = JSON.parse(data);
 						const delta = j.choices?.[0]?.delta?.content;
 						if (delta) {
-							assistant.content += delta;
-							messages = [...messages];
+							// Mutate through the $state array so the proxy sees the write —
+							// writing to the captured raw `assistant` object doesn't rerender.
+							messages[messages.length - 1].content += delta;
 							await tick();
 						}
 					} catch {
@@ -81,7 +82,8 @@
 					}
 				}
 			}
-			if (!assistant.content) assistant.content = '(no response)';
+			if (!messages[messages.length - 1].content)
+				messages[messages.length - 1].content = '(no response)';
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 			messages = messages.slice(0, -1); // drop the empty assistant bubble

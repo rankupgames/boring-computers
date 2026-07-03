@@ -121,7 +121,10 @@ chromium --no-sandbox --test-type --disable-dev-shm-usage --disable-gpu --no-fir
 xterm -fa "DejaVu Sans Mono" -fs 10 -geometry 108x13+16+648 -bg "#0e0e0e" -fg "#ededed" \
   -title "boring computers" -e /bin/sh -c 'echo "boring computers . desktop microVM"; echo "coding agents ready:  claude   codex   cursor-agent   pi   (bring your own key)"; echo; exec /bin/sh' >/dev/null 2>&1 &
 xcalc -geometry 300x400+956+20 >/var/log/xcalc.log 2>&1 &
-x11vnc -display :0 -forever -shared -nopw -rfbport 5900 -noxdamage -quiet >/var/log/x11vnc.log 2>&1 &
+# -threads: serve input + framebuffer concurrently (responsive input). -defer 10:
+# send updates ~10ms after a change (low latency). Keep -noxdamage — Xvfb's DAMAGE
+# misses some initial window paints, so we poll the framebuffer instead.
+x11vnc -display :0 -forever -shared -nopw -rfbport 5900 -noxdamage -threads -defer 10 -quiet >/var/log/x11vnc.log 2>&1 &
 
 # Bridge guest vsock port 5900 -> local VNC. The host connects via the vsock UDS.
 socat VSOCK-LISTEN:5900,fork,reuseaddr TCP:127.0.0.1:5900 >/var/log/socat.log 2>&1 &

@@ -92,6 +92,11 @@
 			rfb.scaleViewport = true;
 			rfb.resizeSession = false;
 			rfb.background = '#000';
+			// The guest CPU is the bottleneck, not bandwidth: low zlib compression
+			// means fast per-frame encoding (snappier), decent JPEG quality keeps
+			// text readable. Tight encoding is negotiated with x11vnc automatically.
+			rfb.qualityLevel = 7;
+			rfb.compressionLevel = 1;
 			rfb.addEventListener('connect', () => {
 				if (!disposed) phase = 'live';
 			});
