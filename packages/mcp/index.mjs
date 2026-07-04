@@ -15,7 +15,7 @@ import {
 import { Effect } from 'effect';
 import { make } from '@boring/sdk';
 
-const BASE = process.env.BORING_URL || 'https://162-43-188-89.sslip.io';
+const BASE = process.env.BORING_URL || 'http://localhost:8080';
 const WSBASE = BASE.replace(/^http/, 'ws');
 const PREVIEW_HOST = new URL(BASE).host;
 

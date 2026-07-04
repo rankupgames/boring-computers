@@ -1,9 +1,8 @@
 import { env } from '$env/dynamic/public';
 
-// In production, set PUBLIC_BORING_URL to the public boringd endpoint
-// (e.g. https://162-43-188-89.sslip.io) so the browser talks to it directly.
-// In dev it's unset and requests go through the Vite `/boring` proxy, which
-// injects the token over the SSH tunnel to the box.
+// In production, set PUBLIC_BORING_URL to your own boringd endpoint so the
+// browser talks to it directly. In dev it's unset and requests go through the
+// Vite `/boring` proxy (default target http://localhost:8080).
 const PUB = env.PUBLIC_BORING_URL ?? '';
 
 /** Base for REST calls: the public endpoint in prod, the `/boring` proxy in dev. */
@@ -54,9 +53,9 @@ export async function branchMachine(id: string): Promise<Machine> {
 /** Host of the boringd endpoint, used as the base for preview subdomains. */
 export const previewBase = (() => {
 	try {
-		return new URL(PUB || 'https://162-43-188-89.sslip.io').host;
+		return new URL(PUB || 'http://localhost:8080').host;
 	} catch {
-		return '162-43-188-89.sslip.io';
+		return 'localhost:8080';
 	}
 })();
 

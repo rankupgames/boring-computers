@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	const API = 'https://162-43-188-89.sslip.io';
+	const API = 'http://localhost:8080';
 </script>
 
 <svelte:head>
@@ -29,7 +29,11 @@
 
 	<h2 class="mt-12 text-[15px] font-semibold text-ink">Base URL</h2>
 	<p class="mt-2 text-[13px] leading-relaxed text-ink-muted">
-		The public endpoint is token-less (rate-limited per IP). Point everything at:
+		Run your own <span class="text-ink">boringd</span> (see the
+		<a
+			href="https://github.com/michaelshimeles/boring-computers"
+			class="text-accent hover:underline">repo</a
+		>) and point everything at your deployment. It listens on this by default:
 	</p>
 	<div class="mt-3">{@render code(API)}</div>
 
@@ -92,15 +96,13 @@ curl -s -X POST ${API}/v1/machines \\
 		Run a server inside a connected machine and open it at a public HTTPS URL — no config:
 	</p>
 	<div class="mt-3">
-		{@render code(`https://<machine-id>--<port>.${API.replace('https://', '')}/`)}
+		{@render code(`https://<machine-id>--<port>.<your-preview-domain>/`)}
 	</div>
 
 	<h2 class="mt-12 text-[15px] font-semibold text-ink">Inference</h2>
 	<p class="mt-2 text-[13px] leading-relaxed text-ink-muted">
 		An OpenAI-compatible gateway — Claude runs on Anthropic, everything else routes through
-		OpenRouter. Try it in the <a href={resolve('/inference')} class="text-accent hover:underline"
-			>playground</a
-		>.
+		OpenRouter (set your own <code class="text-ink">BORING_OPENROUTER_KEY</code>).
 	</p>
 	<div class="mt-3 overflow-x-auto rounded-geist border border-line">
 		<table class="w-full border-collapse font-mono text-[12px]">

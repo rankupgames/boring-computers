@@ -34,9 +34,6 @@
 		>boring.</a
 	>
 	<div class="flex items-center gap-5">
-		<a href={resolve('/inference')} class="text-ink-subtle transition-colors hover:text-ink"
-			>Inference</a
-		>
 		<a href={resolve('/docs')} class="text-ink-subtle transition-colors hover:text-ink">Docs</a>
 		<a
 			href="https://github.com/michaelshimeles/boring-computers"

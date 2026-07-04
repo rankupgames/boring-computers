@@ -9,7 +9,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 // (e.g. http://localhost:18080) to target a local/private boringd. If that
 // private boringd needs a token, set BORING_TOKEN and it's injected here
 // server-side so it never reaches the browser.
-const BORING_URL = process.env.BORING_URL || 'https://162-43-188-89.sslip.io';
+const BORING_URL = process.env.BORING_URL || 'http://localhost:8080';
 const BORING_TOKEN = process.env.BORING_TOKEN || '';
 
 export default defineConfig({
