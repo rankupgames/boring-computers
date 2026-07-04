@@ -1,37 +1,66 @@
-# boring-computers
+# boring computers
 
-A [Turborepo](https://turbo.build/repo) monorepo (npm workspaces).
+**On-demand Linux computers you can hand to an AI.**
 
-## Structure
+Each one is a real [Firecracker](https://firecracker-microvm.github.io/) microVM —
+a full machine with its own kernel — that boots in milliseconds, does its thing,
+and self-destructs. Live at **[boringcomputers.com](https://boringcomputers.com)**.
 
-```
-apps/
-  web/                    SvelteKit app (Geist design system) — the hero site
-packages/
-  eslint-config/          @boring/eslint-config   — shared ESLint flat config (Svelte)
-  prettier-config/        @boring/prettier-config — shared Prettier options + plugins
-  typescript-config/      @boring/typescript-config — shared tsconfig bases
-```
+## What you get
 
-## Getting started
+- **A computer** — a full Linux desktop (browser, terminal, apps) streamed to
+  your browser, or a fast headless shell.
+- **Coding agents preinstalled** — `claude`, `codex`, `cursor`, `pi`, plus node,
+  python, git and internet.
+- **An AI that drives it** — say what you want. It either uses the screen
+  (clicks, browses) or writes + runs code and hands you a **live URL**.
+- **Files & ports** — drag files in and out; expose any port at a public HTTPS
+  URL.
+- **Fork** — clone a running computer, exact live state and all, in ~35 ms.
+
+## Use it
+
+**In the browser** — [boringcomputers.com](https://boringcomputers.com): press
+_Launch_ and you have a computer.
+
+**From the API** — a plain REST + WebSocket endpoint, no key required:
 
 ```sh
-npm install        # installs all workspaces
-npm run dev        # turbo run dev   — starts apps/web
+curl -X POST https://162-43-188-89.sslip.io/v1/machines \
+  -H 'content-type: application/json' \
+  -d '{"template":"python","ttl_seconds":60}'
 ```
 
-## Tasks
+Full API + the TypeScript SDK (`@boring/sdk`) in the
+[docs](https://boringcomputers.com/docs).
 
-All tasks are orchestrated by Turborepo from the repo root:
+**From any AI** — the MCP server ([`@boring/mcp`](packages/mcp)) lets Claude
+Desktop, Cursor, and other agents spin up and drive computers as a tool.
+
+## How it works
+
+Real hardware-virtualized isolation — a kernel per machine, not a shared
+container. Each VM is jailed and resource-capped, restored from a memory
+snapshot in ~3 ms, and self-destructs on a TTL. Guests are network-isolated
+behind an egress firewall. The control plane is [`boringd/`](boringd) (Go); the
+host setup lives in [`infra/latitude/`](infra/latitude).
+
+## Repo
+
+A [Turborepo](https://turbo.build/repo) monorepo (npm workspaces):
+
+```
+apps/web/          the site — SvelteKit
+boringd/           the control plane — Go, runs the microVMs
+packages/sdk/      @boring/sdk — TypeScript client
+packages/mcp/      @boring/mcp — MCP server
+infra/latitude/    host setup — rootfs, kernel, networking, Caddy
+```
 
 ```sh
-npm run dev        # dev servers (persistent)
-npm run build      # production builds
-npm run check      # svelte-check / type-check
-npm run lint       # prettier --check + eslint
-npm run format     # prettier --write
-npm run test       # unit + e2e
+npm install      # all workspaces
+npm run dev      # the site
+npm run build    # production build
+npm run check    # type-check
+npm run lint     # prettier + eslint
 ```
-
-Run a task for a single workspace with a filter, e.g. `npx turbo run build --filter=web`,
-or work inside an app directly: `npm run dev -w web`.
