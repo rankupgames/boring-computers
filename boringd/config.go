@@ -65,6 +65,7 @@ type Config struct {
 	S3Key            string // BORING_S3_KEY
 	S3Secret         string // BORING_S3_SECRET
 	S3Bucket         string // BORING_S3_BUCKET (default boring-volumes)
+	S3Region         string // BORING_S3_REGION (SigV4 signing region)
 	S3UseSSL         bool   // BORING_S3_SSL=="1"
 	VolumeQuotaMB    int    // per-volume size cap
 	VolumeTTLDefault int    // default volume lifetime (seconds)
@@ -129,6 +130,7 @@ func LoadConfig() Config {
 		S3Key:               os.Getenv("BORING_S3_KEY"),
 		S3Secret:            os.Getenv("BORING_S3_SECRET"),
 		S3Bucket:            envStr("BORING_S3_BUCKET", "boring-volumes"),
+		S3Region:            os.Getenv("BORING_S3_REGION"),
 		S3UseSSL:            os.Getenv("BORING_S3_SSL") == "1",
 		VolumeQuotaMB:       envInt("BORING_VOLUME_QUOTA_MB", 256),
 		VolumeTTLDefault:    envInt("BORING_VOLUME_TTL", 86400),

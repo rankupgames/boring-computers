@@ -45,6 +45,7 @@ func newStorage(cfg Config) (*Storage, error) {
 	cl, err := minio.New(cfg.S3Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.S3Key, cfg.S3Secret, ""),
 		Secure: cfg.S3UseSSL,
+		Region: cfg.S3Region,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("s3 client: %w", err)
