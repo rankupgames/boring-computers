@@ -31,11 +31,14 @@ curl -X POST https://162-43-188-89.sslip.io/v1/machines \
   -d '{"template":"python","ttl_seconds":60}'
 ```
 
-Full API + the TypeScript SDK (`@boring/sdk`) in the
-[docs](https://boringcomputers.com/docs).
+Full REST + WebSocket API in the [docs](https://boringcomputers.com/docs).
 
-**From any AI** — the MCP server ([`@boring/mcp`](packages/mcp)) lets Claude
-Desktop, Cursor, and other agents spin up and drive computers as a tool.
+**From any AI** — an MCP server ([`packages/mcp`](packages/mcp)) lets Claude
+Desktop, Cursor, and other agents spin up and drive computers as a tool. Run it
+from source (see its readme).
+
+> A TypeScript client ([`packages/sdk`](packages/sdk)) and the MCP server live in
+> this repo but aren't published to npm yet — use them from source.
 
 ## How it works
 

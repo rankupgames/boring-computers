@@ -56,7 +56,7 @@ type Config struct {
 	NetSubnet string // guest /24 prefix, e.g. 10.200.0 (gateway .1)
 
 	// Preview: expose a guest port at <id>--<port>.<PreviewBase>.
-	PreviewBase string // e.g. 162-43-188-89.sslip.io ("" disables previews)
+	PreviewBase string // BORING_PREVIEW_BASE, e.g. previews.example.com ("" disables previews)
 	LeasesPath  string // dnsmasq lease file, for guest IP lookup
 
 	// Warm pool: keep this many desktops pre-booted so a request is instant.
@@ -111,7 +111,7 @@ func LoadConfig() Config {
 		NetEnable:           os.Getenv("BORING_NET") == "1",
 		NetBridge:           envStr("BORING_NET_BRIDGE", "boring0"),
 		NetSubnet:           envStr("BORING_NET_SUBNET", "10.200.0"),
-		PreviewBase:         envStr("BORING_PREVIEW_BASE", "162-43-188-89.sslip.io"),
+		PreviewBase:         os.Getenv("BORING_PREVIEW_BASE"), // deployment-specific; unset disables previews
 		LeasesPath:          envStr("BORING_LEASES", "/var/lib/misc/dnsmasq.leases"),
 		DesktopPool:         envInt("BORING_DESKTOP_POOL", 1),
 		OpenRouterKey:       os.Getenv("BORING_OPENROUTER_KEY"),

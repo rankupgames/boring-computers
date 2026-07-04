@@ -85,10 +85,11 @@ curl -s -X POST ${API}/v1/machines \\
 		</table>
 	</div>
 
-	<h2 class="mt-12 text-[15px] font-semibold text-ink">TypeScript SDK</h2>
+	<h2 class="mt-12 text-[15px] font-semibold text-ink">TypeScript client</h2>
 	<p class="mt-2 text-[13px] leading-relaxed text-ink-muted">
-		<code class="text-ink">@boring/sdk</code> is a dependency-free client (global
-		<code class="text-ink">fetch</code>/<code class="text-ink">WebSocket</code>, Node&nbsp;24+):
+		A small dependency-free client (global <code class="text-ink">fetch</code>/<code
+			class="text-ink">WebSocket</code
+		>) lives in the repo at <code class="text-ink">packages/sdk</code> — not on npm, use it from source:
 	</p>
 	<div class="mt-3">
 		{@render code(`import { BoringClient } from '@boring/sdk';
@@ -121,12 +122,13 @@ await boring.destroyMachine(vm.id);`)}
 			target="_blank"
 			rel="noopener"
 			class="text-accent hover:underline">Model Context Protocol</a
-		>. Add <code class="text-ink">@boring/mcp</code> to your MCP client:
+		>. It lives in the repo at <code class="text-ink">packages/mcp</code> (not on npm yet); run it from
+		source and point your MCP client at it:
 	</p>
 	<div class="mt-3">
 		{@render code(`{
   "mcpServers": {
-    "boring-computers": { "command": "npx", "args": ["-y", "@boring/mcp"] }
+    "boring-computers": { "command": "node", "args": ["/path/to/packages/mcp/index.mjs"] }
   }
 }`)}
 	</div>
