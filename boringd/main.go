@@ -23,6 +23,11 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
 	log.SetPrefix("boringd ")
 
+	// Clean up any VMs/artifacts orphaned by a previous unclean exit before we
+	// start booting new ones (boringd starts with an empty map, so anything
+	// present is stale).
+	reapOrphans(cfg)
+
 	mgr := NewManager(cfg)
 	mgr.StartReaper()
 
