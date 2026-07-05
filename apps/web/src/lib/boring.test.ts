@@ -6,7 +6,6 @@ import {
 	createVolume,
 	fleetCount,
 	getMachine,
-	previewBase,
 	previewUrl,
 	saveMachine,
 	wsUrl
@@ -41,12 +40,8 @@ describe('URL helpers', () => {
 		expect(apiBase).toBe('/boring');
 	});
 
-	it('previewBase falls back to localhost:8080 when PUBLIC_BORING_URL is unset', () => {
-		expect(previewBase).toBe('localhost:8080');
-	});
-
-	it('previewUrl builds the <id>--<port>.<base> subdomain URL', () => {
-		expect(previewUrl('abc123', 3000)).toBe('https://abc123--3000.localhost:8080/');
+	it('previewUrl builds the path-based proxy URL through the api base', () => {
+		expect(previewUrl('abc123', 3000)).toBe('/boring/v1/machines/abc123/web/3000/');
 	});
 
 	it('wsUrl derives ws proto and host from location in dev', () => {

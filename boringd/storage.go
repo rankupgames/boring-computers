@@ -65,8 +65,8 @@ func newStorage(cfg Config) (*Storage, error) {
 	return &Storage{client: cl, bucket: cfg.S3Bucket, quotaBytes: int64(cfg.VolumeQuotaMB) << 20}, nil
 }
 
-func prefix(id string) string     { return id + "/" }
-func metaKey(id string) string    { return id + "/.volume.json" }
+func prefix(id string) string  { return id + "/" }
+func metaKey(id string) string { return id + "/.volume.json" }
 func fileKey(id, p string) string {
 	p = strings.TrimPrefix(p, "/")
 	cleaned := path.Clean(p)
