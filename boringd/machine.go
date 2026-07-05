@@ -526,7 +526,9 @@ func (mgr *Manager) StartReaper() {
 				var expired []string
 				mgr.mu.Lock()
 				for id, m := range mgr.machines {
-					if now.After(m.ExpiresAt) {
+					// Persistent machines have no TTL — the periodic sweep must skip
+					// them (they still carry an ExpiresAt, but no reaper honors it).
+					if !m.Persistent && now.After(m.ExpiresAt) {
 						expired = append(expired, id)
 					}
 				}
