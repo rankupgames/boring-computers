@@ -19,6 +19,10 @@ set -euo pipefail
 : "${LATITUDE_API_KEY:?set LATITUDE_API_KEY}"
 : "${LATITUDE_PROJECT:?set LATITUDE_PROJECT (proj_...)}"
 : "${LATITUDE_SSH_KEY:?set LATITUDE_SSH_KEY (ssh_... — an uploaded SSH key id)}"
+# Latitude's ssh_keys create field does not reliably inject the key; the reliable
+# path is a cloud-init user_data that appends the key to /root/.ssh/authorized_keys.
+# Set LATITUDE_USER_DATA to a user_data id (ud_...) that does this, or SSH will fail.
+USER_DATA="${LATITUDE_USER_DATA:-}"
 PLAN="${LATITUDE_PLAN:-c3-small-x86}"
 SITE="${LATITUDE_SITE:-MIA2}"
 OS="${LATITUDE_OS:-ubuntu_24_04_x64_lts}"
@@ -30,7 +34,7 @@ log "Creating ${PLAN} @ ${SITE} (${OS}) in ${LATITUDE_PROJECT}…"
 RESP="$(curl -sS -g --max-time 90 -X POST 'https://api.latitude.sh/servers' \
 	-H "Authorization: Bearer ${LATITUDE_API_KEY}" \
 	-H 'Accept: application/vnd.api+json' -H 'Content-Type: application/vnd.api+json' \
-	-d "{\"data\":{\"type\":\"servers\",\"attributes\":{\"project\":\"${LATITUDE_PROJECT}\",\"plan\":\"${PLAN}\",\"site\":\"${SITE}\",\"operating_system\":\"${OS}\",\"hostname\":\"${HOST}\",\"ssh_keys\":[\"${LATITUDE_SSH_KEY}\"],\"billing\":\"hourly\"}}}")"
+	-d "{\"data\":{\"type\":\"servers\",\"attributes\":{\"project\":\"${LATITUDE_PROJECT}\",\"plan\":\"${PLAN}\",\"site\":\"${SITE}\",\"operating_system\":\"${OS}\",\"hostname\":\"${HOST}\",\"ssh_keys\":[\"${LATITUDE_SSH_KEY}\"]${USER_DATA:+,\"user_data\":\"${USER_DATA}\"},\"billing\":\"hourly\"}}}")"
 
 ID="$(printf '%s' "${RESP}" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("data",{}).get("id","") if "errors" not in d else "ERR:"+json.dumps(d["errors"])[:300])')"
 [[ "${ID}" == ERR:* || -z "${ID}" ]] && { echo "provision failed: ${ID:-$RESP}" >&2; exit 1; }
