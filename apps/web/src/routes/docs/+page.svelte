@@ -93,10 +93,11 @@ curl -s -X POST ${API}/v1/machines \\
 
 	<h2 class="mt-12 text-[15px] font-semibold text-ink">Previews</h2>
 	<p class="mt-2 text-[13px] leading-relaxed text-ink-muted">
-		Run a server inside a connected machine and open it at a public HTTPS URL — no config:
+		Run a server inside a connected machine and open its port through boringd — works locally (over
+		a tunnel) and on public deployments, no wildcard DNS:
 	</p>
 	<div class="mt-3">
-		{@render code(`https://<machine-id>--<port>.<your-preview-domain>/`)}
+		{@render code(`${API}/v1/machines/<machine-id>/web/<port>/`)}
 	</div>
 
 	<h2 class="mt-12 text-[15px] font-semibold text-ink">Inference</h2>
