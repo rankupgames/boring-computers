@@ -86,6 +86,9 @@ func (s *Server) runAgent(w http.ResponseWriter, r *http.Request) {
 		if guard.stopped() {
 			return
 		}
+		// Keep the machine alive while we're working on it — a run must not die
+		// to the TTL reaper mid-action.
+		s.mgr.ExtendIfExpiring(id, 2*time.Minute)
 		resp, err := callAnthropicAPI(s.cfg, anthropicRequest{
 			Model:      s.cfg.AgentModel,
 			MaxTokens:  2048,

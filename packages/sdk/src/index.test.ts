@@ -269,6 +269,26 @@ describe('volumes', () => {
 	});
 });
 
+describe('extendMachine', () => {
+	it('POSTs the ttl and decodes the machine with its new expiry', async () => {
+		fetchMock.mockResolvedValue(ok(MACHINE));
+
+		const machine = await Effect.runPromise(make().extendMachine('m1', 300));
+
+		expect(machine).toEqual(MACHINE);
+		expect(calledUrl()).toBe('http://localhost:8080/v1/machines/m1/extend');
+		expect(JSON.parse(calledBody())).toEqual({ ttl_seconds: 300 });
+	});
+
+	it('sends an empty body when ttl is omitted (server default)', async () => {
+		fetchMock.mockResolvedValue(ok(MACHINE));
+
+		await Effect.runPromise(make().extendMachine('m1'));
+
+		expect(JSON.parse(calledBody())).toEqual({});
+	});
+});
+
 describe('exec', () => {
 	const RESULT = { output: 'hi', exit_code: 0, timed_out: false, duration_ms: 42 } as const;
 

@@ -187,6 +187,46 @@ func (mgr *Manager) Console(id string) (*Console, bool) {
 	return m.driver.Console(), true
 }
 
+// Extend resets a machine's TTL to ttlSeconds from now (0 → the default TTL;
+// clamped into [MinTTL, MaxTTL]). Persistent machines are returned untouched.
+// Same stop/retime/re-arm sequence as claimPooled.
+func (mgr *Manager) Extend(id string, ttlSeconds int) (machineView, error) {
+	ttl := mgr.cfg.ClampTTL(ttlSeconds)
+	mgr.mu.Lock()
+	defer mgr.mu.Unlock()
+	m, ok := mgr.machines[id]
+	if !ok {
+		return machineView{}, ErrNotFound
+	}
+	if m.Persistent {
+		return m.View(), nil // no TTL to extend
+	}
+	m.ExpiresAt = time.Now().Add(time.Duration(ttl) * time.Second)
+	if m.timer != nil {
+		m.timer.Stop()
+	}
+	mid := m.ID
+	m.timer = time.AfterFunc(time.Until(m.ExpiresAt), func() { mgr.reap(mid) })
+	return m.View(), nil
+}
+
+// ExtendIfExpiring bumps the TTL to the default when less than window remains —
+// the agent loops call this each step so a machine can't die mid-run. No-op for
+// persistent (or already-gone) machines.
+func (mgr *Manager) ExtendIfExpiring(id string, window time.Duration) {
+	mgr.mu.Lock()
+	m, ok := mgr.machines[id]
+	if !ok || m.Persistent {
+		mgr.mu.Unlock()
+		return
+	}
+	remaining := time.Until(m.ExpiresAt)
+	mgr.mu.Unlock()
+	if remaining < window {
+		_, _ = mgr.Extend(id, 0)
+	}
+}
+
 // ConsoleLock returns the machine's console together with its exclusive-user
 // lock (see Machine.consoleMu). Callers TryLock it around command injection.
 func (mgr *Manager) ConsoleLock(id string) (*Console, *sync.Mutex, bool) {

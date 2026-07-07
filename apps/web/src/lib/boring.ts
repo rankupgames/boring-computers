@@ -40,6 +40,20 @@ export async function saveMachine(id: string, volume: string): Promise<void> {
 	}
 }
 
+/** Reset a machine's TTL ("+5 min"). Returns the machine with its new expiry. */
+export async function extendMachine(id: string, ttlSeconds: number): Promise<Machine> {
+	const res = await fetch(`${apiBase}/v1/machines/${id}/extend`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ ttl_seconds: ttlSeconds })
+	});
+	if (!res.ok) {
+		const j = await res.json().catch(() => ({}));
+		throw new Error(j.error ?? `extend failed (${res.status})`);
+	}
+	return (await res.json()) as Machine;
+}
+
 /** Fork a running machine: clones its live state into a new machine. */
 export async function branchMachine(id: string): Promise<Machine> {
 	const res = await fetch(`${apiBase}/v1/machines/${id}/branch`, { method: 'POST' });

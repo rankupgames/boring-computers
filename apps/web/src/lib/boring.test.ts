@@ -4,6 +4,7 @@ import {
 	branchMachine,
 	createMachine,
 	createVolume,
+	extendMachine,
 	fleetCount,
 	getMachine,
 	previewUrl,
@@ -126,6 +127,23 @@ describe('branchMachine', () => {
 		fetchMock.mockResolvedValueOnce(jsonResponse({}, { status: 502 }));
 
 		await expect(branchMachine('m1')).rejects.toThrow('fork failed (502)');
+	});
+});
+
+describe('extendMachine', () => {
+	it('POSTs the new ttl and returns the machine with its new expiry', async () => {
+		const machine = { id: 'm1', mode: 'warm', boot_ms: 5, expires_at: '2026-01-01T00:05:00Z' };
+		fetchMock.mockResolvedValueOnce(jsonResponse(machine));
+
+		await expect(extendMachine('m1', 300)).resolves.toEqual(machine);
+		expect(fetchMock.mock.calls[0][0]).toBe('/boring/v1/machines/m1/extend');
+		expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({ ttl_seconds: 300 });
+	});
+
+	it('surfaces the server error message on failure', async () => {
+		fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'not found' }, { status: 404 }));
+
+		await expect(extendMachine('m1', 300)).rejects.toThrow('not found');
 	});
 });
 

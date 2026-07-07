@@ -49,6 +49,7 @@ func NewServer(cfg Config, mgr *Manager) *Server {
 	s.mux.Handle("GET /v1/machines/{id}", s.auth(http.HandlerFunc(s.handleGet)))
 	s.mux.Handle("DELETE /v1/machines/{id}", s.auth(http.HandlerFunc(s.handleDelete)))
 	s.mux.Handle("POST /v1/machines/{id}/branch", s.auth(http.HandlerFunc(s.handleBranch)))
+	s.mux.Handle("POST /v1/machines/{id}/extend", s.auth(http.HandlerFunc(s.handleExtend)))
 
 	// Deterministic command execution (no TTY, no LLM): run one command, get
 	// {output, exit_code} back as JSON.
@@ -210,6 +211,27 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	view, ok := s.mgr.Get(id)
 	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
+// handleExtend resets a machine's TTL ("I need a few more minutes"). Body
+// {"ttl_seconds": n} — omitted/0 means the default TTL; clamped like create.
+func (s *Server) handleExtend(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		TTLSeconds int `json:"ttl_seconds"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err.Error() != "EOF" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+	}
+	view, err := s.mgr.Extend(id, req.TTLSeconds)
+	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		return
 	}

@@ -40,6 +40,7 @@ from a live snapshot) are best-effort optimizations that fall back cleanly.
 | GET | `/v1/machines/{id}` | machine or 404 |
 | DELETE | `/v1/machines/{id}` | 204 or 404 |
 | POST | `/v1/machines/{id}/exec` | body `{"command":"…","timeout_seconds":30}` → `{"output","exit_code","timed_out","duration_ms"}` (409 while an exec/agent holds the console) |
+| POST | `/v1/machines/{id}/extend` | body `{"ttl_seconds":300}` (0/omitted → default) → machine with its new expiry |
 | POST | `/v1/machines/{id}/branch` | live fork → machine (501 if snapshot unavailable) |
 | GET | `/v1/machines/{id}/screenshot` | PNG of a desktop machine |
 | POST | `/v1/machines/{id}/upload` | upload a file to `/root` (`X-Filename` header) |

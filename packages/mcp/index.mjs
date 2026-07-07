@@ -118,6 +118,19 @@ const TOOLS = [
 		}
 	},
 	{
+		name: 'extend_computer',
+		description:
+			"Reset a computer's self-destruct timer (e.g. when a task needs more time). Returns the new expiry.",
+		inputSchema: {
+			type: 'object',
+			properties: {
+				id: { type: 'string' },
+				ttl_seconds: { type: 'number', description: 'new TTL from now (default 600, clamped 15–900)', default: 600 }
+			},
+			required: ['id']
+		}
+	},
+	{
 		name: 'fork_computer',
 		description: 'Clone a running computer (its exact live state) into a new one. Returns the fork id.',
 		inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }
@@ -203,6 +216,10 @@ async function dispatch(name, a) {
 		}
 		case 'preview_url':
 			return text(`https://${a.id}--${a.port}.${PREVIEW_HOST}/`);
+		case 'extend_computer': {
+			const m = await run(boring.extendMachine(a.id, a.ttl_seconds || 600));
+			return text(`Extended ${m.id} — now self-destructs at ${m.expires_at}.`);
+		}
 		case 'fork_computer': {
 			const f = await run(boring.branchMachine(a.id));
 			return text(`Forked → ${f.id} (${f.mode}, ${f.boot_ms}ms). A live clone of ${a.id}.`);

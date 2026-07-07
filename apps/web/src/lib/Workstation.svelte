@@ -6,6 +6,7 @@
 		createMachine,
 		getMachine,
 		branchMachine,
+		extendMachine,
 		createVolume,
 		saveMachine,
 		previewUrl,
@@ -164,6 +165,23 @@
 		} finally {
 			saving = false;
 			setTimeout(() => (fileMsg = ''), 8000);
+		}
+	}
+
+	// Extend: reset the TTL when you need a few more minutes. The countdown
+	// restarts from the machine's new expiry.
+	let extending = $state(false);
+	async function extend() {
+		if (!machine || extending) return;
+		extending = true;
+		try {
+			machine = await extendMachine(machine.id, 300);
+			timer.start(machine);
+		} catch (e) {
+			fileMsg = '⚠ ' + (e instanceof Error ? e.message : 'extend failed');
+			setTimeout(() => (fileMsg = ''), 5000);
+		} finally {
+			extending = false;
 		}
 	}
 
@@ -404,6 +422,15 @@
 					title={machine?.persistent ? 'no auto-shutdown' : 'self-destructs'}
 					>{machine?.persistent ? '∞ stays up' : `${remaining}s`}</span
 				>
+				{#if !machine?.persistent}
+					<button
+						class="text-ink-subtle transition-colors hover:text-ink disabled:opacity-40"
+						onclick={extend}
+						disabled={extending}
+						title="Reset the self-destruct to 5 minutes from now"
+						>{extending ? '…' : '+5 min'}</button
+					>
+				{/if}
 				<button
 					class="text-ink-subtle transition-colors hover:text-ink disabled:opacity-40"
 					onclick={save}

@@ -121,6 +121,11 @@ export interface BoringClient {
 	readonly destroyMachine: (id: string) => Effect.Effect<void, BoringError>;
 	readonly branchMachine: (id: string) => Effect.Effect<Machine, BoringError>;
 	/**
+	 * Reset a machine's TTL to `ttlSeconds` from now (omit for the server's
+	 * default; clamped like create). Returns the machine with its new expiry.
+	 */
+	readonly extendMachine: (id: string, ttlSeconds?: number) => Effect.Effect<Machine, BoringError>;
+	/**
 	 * Run one shell command in the machine and get `{output, exit_code}` back —
 	 * deterministic, no TTY. A 409 means the console is busy (another exec or an
 	 * agent run); `exit_code` is `null` when the command timed out.
@@ -259,6 +264,13 @@ export const make = (options: BoringClientOptions = {}): BoringClient => {
 		destroyMachine: (id) => request('DELETE', `/v1/machines/${encodeURIComponent(id)}`, null),
 		branchMachine: (id) =>
 			request('POST', `/v1/machines/${encodeURIComponent(id)}/branch`, MachineSchema),
+		extendMachine: (id, ttlSeconds) =>
+			request(
+				'POST',
+				`/v1/machines/${encodeURIComponent(id)}/extend`,
+				MachineSchema,
+				ttlSeconds !== undefined ? { ttl_seconds: ttlSeconds } : {}
+			).pipe(Effect.retry(retry)),
 		// No retry: a command is not idempotent.
 		exec: (id, command, opts = {}) =>
 			request('POST', `/v1/machines/${encodeURIComponent(id)}/exec`, ExecResultSchema, {
