@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import BootDemo from '$lib/BootDemo.svelte';
 	import Chassis from '$lib/Chassis.svelte';
 	import Launcher from '$lib/Launcher.svelte';
 
@@ -8,10 +9,6 @@
 	const interactive = import.meta.env.DEV;
 
 	const GITHUB = 'https://github.com/michaelshimeles/boring-computers';
-
-	// Terminal-snippet lines with literal braces (kept in JS to avoid escaping in markup).
-	const CURL = `curl -XPOST $BORING/v1/machines -d '{"template":"desktop"}'`;
-	const RESP = `→ {"id":"m-1a2b3c4d","mode":"warm","boot_ms":0}`;
 
 	const PRODUCTS = [
 		{
@@ -104,30 +101,11 @@
 					</div>
 				</div>
 
-				<!-- the self-host quickstart, shown on the screen of the case -->
+				<!-- what the real console does, simulated on the screen of the case:
+				     boot → "build a snake game" → the agent ships it → it plays -->
 				<div class="w-full">
 					<Chassis on={true}>
-						<div class="p-4 font-mono text-[12px] leading-relaxed">
-							<div class="text-ink-muted">
-								<span class="text-ink-faint">$</span> git clone {GITHUB.replace('https://', '')}
-							</div>
-							<div class="text-ink-muted">
-								<span class="text-ink-faint">$</span> cd boring-computers && npm install
-							</div>
-							<div class="text-ink-faint">
-								# add your keys, then run boringd on a KVM box — or your Mac
-							</div>
-							<div class="text-ink-muted"><span class="text-ink-faint">$</span> ./boringd</div>
-							<div class="mt-2 text-success">
-								boring computers · a computer is one HTTP call away
-							</div>
-							<div class="mt-3 text-ink-muted"><span class="text-ink-faint">$</span> {CURL}</div>
-							<div class="text-ink-muted">
-								{RESP}<span
-									class="ml-1 inline-block h-3.5 w-1.5 animate-pulse bg-ink-subtle align-middle"
-								></span>
-							</div>
-						</div>
+						<BootDemo />
 					</Chassis>
 				</div>
 			</div>
