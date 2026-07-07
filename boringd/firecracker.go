@@ -496,10 +496,14 @@ func (d *fcDriver) CreateSnapshot(newID string) (string, error) {
 
 	// Firecracker writes to paths in its own filesystem view. Jailed: it can only
 	// write inside the chroot, so use chroot-relative paths and move the artefacts
-	// out afterwards.
+	// out afterwards. The names MUST be unique per snapshot: a snapshot-restored
+	// VM's chroot already holds "snap"/"mem" — root-owned hardlinks to the shared
+	// template artefacts staged for its own restore — so writing to "/snap" both
+	// fails (EACCES for the jailed uid) and, if it ever succeeded, would corrupt
+	// the template every other restore shares.
 	apiSnap, apiMem := snapFile, memFile
 	if d.jailed {
-		apiSnap, apiMem = "/snap", "/mem"
+		apiSnap, apiMem = "/snap-"+newID, "/mem-"+newID
 	}
 
 	if err := d.apiPatch("/vm", map[string]any{"state": "Paused"}); err != nil {
@@ -522,8 +526,8 @@ func (d *fcDriver) CreateSnapshot(newID string) (string, error) {
 	// Move the snapshot + memory files out of the source's chroot into snapDir.
 	if d.jailed {
 		for _, m := range [][2]string{
-			{filepath.Join(d.chroot, "snap"), snapFile},
-			{filepath.Join(d.chroot, "mem"), memFile},
+			{filepath.Join(d.chroot, "snap-"+newID), snapFile},
+			{filepath.Join(d.chroot, "mem-"+newID), memFile},
 		} {
 			if err := os.Rename(m[0], m[1]); err != nil {
 				if cerr := copyReflink(m[0], m[1]); cerr != nil {

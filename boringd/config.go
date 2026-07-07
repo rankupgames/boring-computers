@@ -22,6 +22,13 @@ type Config struct {
 	// MaxMachines caps the number of live machines; creation returns 429 when full.
 	MaxMachines int
 
+	// MaxTemplates caps user-published templates (POST /v1/machines/{id}/publish);
+	// 0 disables publishing entirely. Built-in templates don't count.
+	MaxTemplates int
+
+	// MaxForks caps ?count on POST /v1/machines/{id}/branch (fleet fork).
+	MaxForks int
+
 	// MemReserveMB is host RAM kept free — boot is refused if a new VM would eat
 	// into it, so the box gracefully hits capacity instead of OOMing. 0 disables.
 	MemReserveMB int
@@ -117,6 +124,8 @@ func LoadConfig() Config {
 		Token:               os.Getenv("BORING_TOKEN"),
 		CORSOrigin:          os.Getenv("BORING_CORS_ORIGIN"),
 		MaxMachines:         envInt("BORING_MAX", 20),
+		MaxTemplates:        envInt("BORING_MAX_TEMPLATES", 10),
+		MaxForks:            envInt("BORING_MAX_FORKS", 8),
 		AllowPersistent:     os.Getenv("BORING_ALLOW_PERSISTENT") == "1",
 		MemReserveMB:        envInt("BORING_MEM_RESERVE_MB", 3072),
 		FirecrackerBin:      envStr("BORING_FIRECRACKER_BIN", "/opt/boring/bin/firecracker"),

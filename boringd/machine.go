@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -37,6 +38,9 @@ type Machine struct {
 	// explicitly deleted (or boringd restarts). Gated by cfg.AllowPersistent.
 	Persistent bool
 
+	// ParentID is set on forks: the machine this one was branched from.
+	ParentID string
+
 	// creatorIP holds the limiter slot to release when the machine dies.
 	creatorIP string
 
@@ -65,6 +69,7 @@ type machineView struct {
 	CreatedAt  string `json:"created_at"`
 	ExpiresAt  string `json:"expires_at"` // "" when the machine is persistent
 	Persistent bool   `json:"persistent,omitempty"`
+	Parent     string `json:"parent,omitempty"` // set on forks: the source machine
 }
 
 // View returns the JSON view of the machine.
@@ -83,6 +88,7 @@ func (m *Machine) View() machineView {
 		CreatedAt:  m.CreatedAt.UTC().Format(time.RFC3339),
 		ExpiresAt:  expires,
 		Persistent: m.Persistent,
+		Parent:     m.ParentID,
 	}
 }
 
@@ -160,6 +166,17 @@ func (mgr *Manager) machineIP(id string) (string, bool) {
 // allocForkIP picks a free static IP for a fork from the top of the subnet
 // (.200–.250, above the dnsmasq DHCP range), avoiding other forks' IPs.
 func (mgr *Manager) allocForkIP() string {
+	ips := mgr.allocForkIPs(1)
+	if len(ips) == 0 {
+		return ""
+	}
+	return ips[0]
+}
+
+// allocForkIPs picks up to n free fork IPs in one scan — a fleet fork must
+// reserve its whole batch up front, because none of the batch's drivers are
+// attached yet and per-fork scans would all pick the same address.
+func (mgr *Manager) allocForkIPs(n int) []string {
 	used := map[string]bool{}
 	mgr.mu.Lock()
 	for _, m := range mgr.machines {
@@ -168,13 +185,14 @@ func (mgr *Manager) allocForkIP() string {
 		}
 	}
 	mgr.mu.Unlock()
-	for x := 200; x <= 250; x++ {
+	var ips []string
+	for x := 200; x <= 250 && len(ips) < n; x++ {
 		ip := fmt.Sprintf("%s.%d", mgr.cfg.NetSubnet, x)
 		if !used[ip] {
-			return ip
+			ips = append(ips, ip)
 		}
 	}
-	return ""
+	return ips
 }
 
 func (mgr *Manager) Console(id string) (*Console, bool) {
@@ -294,7 +312,9 @@ func (mgr *Manager) Create(template string, ttlSeconds int, net, persistent bool
 	}
 
 	// Instant desktop: hand over a pre-booted one from the warm pool if ready.
-	if mgr.cfg.Template(template).Display && mgr.cfg.DesktopPool > 0 {
+	// Only for the stock desktop — published templates (even display ones) must
+	// boot from their own snapshot, not a pooled vanilla machine.
+	if mgr.cfg.Template(template).Name == "desktop" && mgr.cfg.DesktopPool > 0 {
 		if m := mgr.claimPooled(creatorIP, ttl, persistent); m != nil {
 			go mgr.refillPool()
 			life := fmt.Sprintf("ttl=%ds", ttl)
@@ -332,16 +352,18 @@ func (mgr *Manager) Create(template string, ttlSeconds int, net, persistent bool
 
 	// Use the template's prebuilt snapshot for a fast restore when eligible and
 	// present; bootMachine falls back to a cold boot if the restore fails.
-	// `net` forces a cold boot (the snapshot has no NIC) so the VM gets internet.
+	// `net` forces a cold boot (the snapshot has no NIC) so the VM gets internet —
+	// unless the snapshot itself was taken WITH a NIC (published template,
+	// RestoreNet), in which case the restore keeps it and we re-address below.
 	snapDir := ""
-	if tpl.Snapshot && !(net && mgr.cfg.NetEnable) {
+	if tpl.Snapshot && (tpl.RestoreNet || !(net && mgr.cfg.NetEnable)) {
 		cand := filepath.Join(mgr.cfg.TemplatesDir, tpl.Name)
 		if fileExists(filepath.Join(cand, "snapshot_file")) && fileExists(filepath.Join(cand, "mem_file")) {
 			snapDir = cand
 		}
 	}
 
-	drv, mode, bootMS, err := bootMachine(mgr.cfg, id, tpl, snapDir, false)
+	drv, mode, bootMS, err := bootMachine(mgr.cfg, id, tpl, snapDir, tpl.RestoreNet && snapDir != "")
 	if err != nil {
 		// Roll back the reservation (and the per-IP slot).
 		mgr.mu.Lock()
@@ -355,6 +377,12 @@ func (mgr *Manager) Create(template string, ttlSeconds int, net, persistent bool
 	// already created a capped cgroup for the VM, so we don't place it again.
 	if !mgr.cfg.JailerEnable {
 		mgr.cgroups.Place(drv.PID(), id, tpl)
+	}
+
+	// A machine restored from a published-with-NIC snapshot resumed on the
+	// publisher's MAC/IP — give it a fresh identity, fork-style.
+	if mode == "snapshot" && (tpl.RestoreNet || tpl.Display) {
+		mgr.readdressFork(id, drv, tpl, tpl.RestoreNet, "")
 	}
 
 	mgr.mu.Lock()
@@ -375,123 +403,181 @@ func (mgr *Manager) Create(template string, ttlSeconds int, net, persistent bool
 	return m, nil
 }
 
-// Branch forks a new machine from the source machine's live snapshot. Best
-// effort: returns ErrSnapshotUnavailable (mapped to 501) if snapshotting fails.
+// Branch forks a single machine from the source's live snapshot. Best effort:
+// returns ErrSnapshotUnavailable (mapped to 501) if snapshotting fails.
 func (mgr *Manager) Branch(id, creatorIP string) (*Machine, error) {
+	forks, err := mgr.BranchN(id, creatorIP, 1)
+	if err != nil {
+		return nil, err
+	}
+	return forks[0], nil
+}
+
+// BranchN forks count machines from ONE snapshot of the source (the source is
+// paused exactly once, however many clones are made). Partial failures keep the
+// successes: the returned slice holds whatever booted; an error is returned
+// only when nothing did.
+func (mgr *Manager) BranchN(id, creatorIP string, count int) ([]*Machine, error) {
+	count = min(max(count, 1), max(mgr.cfg.MaxForks, 1))
+
 	mgr.mu.Lock()
 	src, ok := mgr.machines[id]
 	if !ok {
 		mgr.mu.Unlock()
 		return nil, ErrNotFound
 	}
-	if len(mgr.machines) >= mgr.cfg.MaxMachines {
+	if len(mgr.machines)+count > mgr.cfg.MaxMachines {
 		mgr.mu.Unlock()
 		return nil, ErrTooManyMachines
 	}
 	srcDriver := src.driver
-	newID := mgr.newID()
+	srcTemplate := src.Template
 	now := time.Now()
 	ttl := mgr.cfg.ClampTTL(int(time.Until(src.ExpiresAt).Seconds()))
 	mgr.mu.Unlock()
 
-	// A fork counts against the caller's per-IP budget (released in teardown).
-	if err := mgr.limiter.Acquire(creatorIP); err != nil {
-		return nil, err
-	}
-
-	mgr.mu.Lock()
-	child := &Machine{
-		ID:        newID,
-		Status:    "booting",
-		Template:  src.Template,
-		creatorIP: creatorIP,
-		CreatedAt: now,
-		ExpiresAt: now.Add(time.Duration(ttl) * time.Second),
-	}
-	mgr.machines[newID] = child
-	mgr.mu.Unlock()
-
 	if srcDriver == nil {
-		mgr.rollback(newID)
 		return nil, ErrSnapshotUnavailable
 	}
+	srcHadNIC := srcDriver.tap != "" // forks of a networked machine
 
-	srcHadNIC := srcDriver.tap != "" // fork of a networked machine
+	// Each fork counts against the caller's per-IP budget (released in teardown/
+	// rollback). Take what we can get: forking 3-of-5 beats erroring out.
+	var children []*Machine
+	mgr.mu.Lock()
+	for i := 0; i < count; i++ {
+		if err := mgr.limiter.Acquire(creatorIP); err != nil {
+			if i == 0 {
+				mgr.mu.Unlock()
+				return nil, err
+			}
+			break
+		}
+		newID := mgr.newID()
+		child := &Machine{
+			ID:        newID,
+			Status:    "booting",
+			Template:  srcTemplate,
+			ParentID:  id,
+			creatorIP: creatorIP,
+			CreatedAt: now,
+			ExpiresAt: now.Add(time.Duration(ttl) * time.Second),
+		}
+		mgr.machines[newID] = child
+		children = append(children, child)
+	}
+	mgr.mu.Unlock()
 
-	// Snapshot the source VM to a fresh directory.
-	snapDir, err := srcDriver.CreateSnapshot(newID)
+	// ONE snapshot serves every clone (per-fork overlays are reflink copies of
+	// its rootfs). Named after the first child; removed when all boots are done.
+	snapDir, err := srcDriver.CreateSnapshot(children[0].ID)
 	if err != nil {
-		mgr.rollback(newID)
+		for _, c := range children {
+			mgr.rollback(c.ID)
+		}
 		log.Printf("branch %s: snapshot failed: %v", id, err)
 		return nil, ErrSnapshotUnavailable
 	}
+	defer os.RemoveAll(snapDir)
 
-	drv, mode, bootMS, err := bootMachine(mgr.cfg, newID, mgr.cfg.Template(src.Template), snapDir, srcHadNIC)
-	if err != nil {
-		mgr.rollback(newID)
-		log.Printf("branch %s: restore failed: %v", id, err)
+	tpl := mgr.cfg.Template(srcTemplate)
+
+	// Pre-allocate the batch's fork IPs: allocForkIP scans attached drivers, and
+	// none of this batch is attached yet, so lazy allocation would hand every
+	// fork the same address.
+	var batchIPs []string
+	if srcHadNIC && mgr.cfg.NetEnable {
+		batchIPs = mgr.allocForkIPs(len(children))
+	}
+
+	var booted []*Machine
+	for i, child := range children {
+		drv, mode, bootMS, err := bootMachine(mgr.cfg, child.ID, tpl, snapDir, srcHadNIC)
+		if err != nil {
+			mgr.rollback(child.ID)
+			log.Printf("branch %s: restore %d/%d failed: %v", id, i+1, len(children), err)
+			continue
+		}
+
+		if !mgr.cfg.JailerEnable {
+			mgr.cgroups.Place(drv.PID(), child.ID, tpl)
+		}
+
+		reserveIP := ""
+		if i < len(batchIPs) {
+			reserveIP = batchIPs[i]
+		}
+		mgr.readdressFork(child.ID, drv, tpl, srcHadNIC, reserveIP)
+
+		cid := child.ID
+		mgr.mu.Lock()
+		child.driver = drv
+		child.Mode = mode
+		child.BootMS = bootMS
+		child.Status = "running"
+		child.timer = time.AfterFunc(time.Until(child.ExpiresAt), func() { mgr.reap(cid) })
+		mgr.mu.Unlock()
+
+		log.Printf("machine %s branched from %s (mode=%s boot_ms=%d fork %d/%d)", cid, id, mode, bootMS, i+1, len(children))
+		booted = append(booted, child)
+	}
+
+	if len(booted) == 0 {
 		return nil, ErrSnapshotUnavailable
 	}
+	return booted, nil
+}
 
-	if !mgr.cfg.JailerEnable {
-		mgr.cgroups.Place(drv.PID(), newID, mgr.cfg.Template(src.Template))
-	}
-
-	tpl := mgr.cfg.Template(src.Template)
-
-	// A networked fork resumed on the source's MAC/IP. Give it a fresh MAC +
-	// static IP while its tap is still off the bridge, then attach it — so it
-	// joins the network cleanly and never collides with the source.
+// readdressFork gives a snapshot-restored machine that resumed on its source's
+// MAC/IP a fresh identity while its tap is still off the bridge, then attaches
+// it — so it joins the network cleanly and never collides with the source. It
+// also repaints a restored desktop (xrefresh for classic X apps; chromium needs
+// a real Ctrl-R). Used by Branch (forks) and Create (published templates whose
+// snapshot carried a NIC). reserveIP, when non-empty, is a pre-allocated fork
+// IP (fleet forks allocate their batch up front); otherwise one is allocated.
+func (mgr *Manager) readdressFork(id string, drv *fcDriver, tpl Template, hadNIC bool, reserveIP string) {
 	var reip string
-	if srcHadNIC && mgr.cfg.NetEnable {
-		if forkIP := mgr.allocForkIP(); forkIP != "" {
+	if hadNIC && mgr.cfg.NetEnable {
+		forkIP := reserveIP
+		if forkIP == "" {
+			forkIP = mgr.allocForkIP()
+		}
+		if forkIP != "" {
 			drv.ip = forkIP
 			reip = fmt.Sprintf("ip link set eth0 down; ip link set eth0 address %s; ip link set eth0 up; ip addr flush dev eth0; ip addr add %s/24 dev eth0; ip route replace default via %s.1; printf 'nameserver 1.1.1.1\\n' > /etc/resolv.conf\n",
-				guestMAC(newID), forkIP, mgr.cfg.NetSubnet)
+				guestMAC(id), forkIP, mgr.cfg.NetSubnet)
 		}
 	}
 
-	// After restore, re-address the NIC (above) and repaint the desktop: xrefresh
-	// Exposes the classic X apps; chromium needs a real reload to re-render.
-	if (reip != "" || tpl.Display) && drv.console != nil {
-		go func() {
-			if reip != "" {
-				time.Sleep(700 * time.Millisecond)
-				drv.console.Write([]byte(reip))
-				time.Sleep(600 * time.Millisecond)
-				if drv.tap != "" {
-					attachTapBridge(drv.tap, mgr.cfg.NetBridge)
-				}
-			}
-			if tpl.Display {
-				drv.console.Write([]byte("DISPLAY=:0 xrefresh 2>/dev/null\n"))
-				time.Sleep(400 * time.Millisecond)
-				if guest, err := mgr.DialVsock(newID, VsockPort); err == nil {
-					defer guest.Close()
-					if cli, err := newRFBClient(guest); err == nil {
-						cli.Click(1, 450, 83) // focus chromium
-						time.Sleep(150 * time.Millisecond)
-						cli.keyEvent(true, 0xffe3) // Ctrl down
-						cli.keyEvent(true, 0x72)   // r
-						cli.keyEvent(false, 0x72)
-						cli.keyEvent(false, 0xffe3) // Ctrl up
-						cli.MoveMouse(455, 305)
-					}
-				}
-			}
-		}()
+	if (reip == "" && !tpl.Display) || drv.console == nil {
+		return
 	}
-
-	mgr.mu.Lock()
-	child.driver = drv
-	child.Mode = mode
-	child.BootMS = bootMS
-	child.Status = "running"
-	child.timer = time.AfterFunc(time.Until(child.ExpiresAt), func() { mgr.reap(newID) })
-	mgr.mu.Unlock()
-
-	log.Printf("machine %s branched from %s (mode=%s boot_ms=%d)", newID, id, mode, bootMS)
-	return child, nil
+	go func() {
+		if reip != "" {
+			time.Sleep(700 * time.Millisecond)
+			drv.console.Write([]byte(reip))
+			time.Sleep(600 * time.Millisecond)
+			if drv.tap != "" {
+				attachTapBridge(drv.tap, mgr.cfg.NetBridge)
+			}
+		}
+		if tpl.Display {
+			drv.console.Write([]byte("DISPLAY=:0 xrefresh 2>/dev/null\n"))
+			time.Sleep(400 * time.Millisecond)
+			if guest, err := mgr.DialVsock(id, VsockPort); err == nil {
+				defer guest.Close()
+				if cli, err := newRFBClient(guest); err == nil {
+					cli.Click(1, 450, 83) // focus chromium
+					time.Sleep(150 * time.Millisecond)
+					cli.keyEvent(true, 0xffe3) // Ctrl down
+					cli.keyEvent(true, 0x72)   // r
+					cli.keyEvent(false, 0x72)
+					cli.keyEvent(false, 0xffe3) // Ctrl up
+					cli.MoveMouse(455, 305)
+				}
+			}
+		}
+	}()
 }
 
 // Destroy tears down a machine by id, returning false if it does not exist.

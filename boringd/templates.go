@@ -11,10 +11,17 @@ type Template struct {
 	Vsock     bool   // configure a vsock device (VNC desktops use it)
 	Snapshot  bool   // eligible for snapshot restore from TemplatesDir/<name>
 	Display   bool   // exposes a VNC framebuffer on guest vsock port 5900
+
+	// RestoreNet: the snapshot was taken from a machine WITH a NIC, so a restore
+	// resumes on the source's MAC/IP and must be re-addressed before joining the
+	// bridge (same dance as a fork). Set from a published template's meta.json.
+	RestoreNet bool
 }
 
-// Template resolves a requested template name to its flavor. Unknown names fall
-// back to the default "python" headless sandbox (snapshot-eligible).
+// Template resolves a requested template name to its flavor. Built-in names
+// (python, desktop) are hardcoded; any other name is a user-published template
+// if TemplatesDir/<name>/meta.json exists (its snapshot carries the machine
+// sizing it was taken with), else it falls back to the default headless sandbox.
 func (c Config) Template(name string) Template {
 	if name == "" {
 		name = "python"
@@ -32,6 +39,19 @@ func (c Config) Template(name string) Template {
 			Display:   true,
 		}
 	default:
+		if meta, ok := loadTemplateMeta(c, name); ok {
+			return Template{
+				Name:       name,
+				Rootfs:     c.BaseRootfs, // unused on restore; snapDir rootfs wins
+				MemSizeMB:  meta.MemSizeMB,
+				VCPUs:      meta.VCPUs,
+				InitPath:   meta.InitPath,
+				Vsock:      meta.Vsock,
+				Snapshot:   true,
+				Display:    meta.Display,
+				RestoreNet: meta.HadNIC,
+			}
+		}
 		return Template{
 			Name:      name,
 			Rootfs:    c.BaseRootfs,

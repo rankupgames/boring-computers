@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -50,6 +51,12 @@ func NewServer(cfg Config, mgr *Manager) *Server {
 	s.mux.Handle("DELETE /v1/machines/{id}", s.auth(http.HandlerFunc(s.handleDelete)))
 	s.mux.Handle("POST /v1/machines/{id}/branch", s.auth(http.HandlerFunc(s.handleBranch)))
 	s.mux.Handle("POST /v1/machines/{id}/extend", s.auth(http.HandlerFunc(s.handleExtend)))
+
+	// Snapshot-to-template: freeze a running machine as a named template; new
+	// machines boot from it in milliseconds ({"template": "<name>"}).
+	s.mux.Handle("POST /v1/machines/{id}/publish", s.auth(http.HandlerFunc(s.handlePublish)))
+	s.mux.Handle("GET /v1/templates", s.auth(http.HandlerFunc(s.handleListTemplates)))
+	s.mux.Handle("DELETE /v1/templates/{name}", s.auth(http.HandlerFunc(s.handleDeleteTemplate)))
 
 	// Deterministic command execution (no TTY, no LLM): run one command, get
 	// {output, exit_code} back as JSON.
@@ -217,6 +224,60 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, view)
 }
 
+// handlePublish freezes a running machine as a named template. Body {"name": s}.
+func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Name string `json:"name"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err.Error() != "EOF" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+	}
+	view, err := s.mgr.Publish(id, req.Name, clientIP(r, s.cfg.TrustProxy))
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		case errors.Is(err, ErrBadTemplateName):
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		case errors.Is(err, ErrTemplateExists):
+			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+		case errors.Is(err, ErrTemplateQuota), errors.Is(err, ErrRateLimited):
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": err.Error()})
+		case errors.Is(err, ErrSnapshotUnavailable):
+			writeJSON(w, http.StatusNotImplemented, map[string]any{"error": err.Error()})
+		default:
+			log.Printf("publish failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		}
+		return
+	}
+	writeJSON(w, http.StatusCreated, view)
+}
+
+func (s *Server) handleListTemplates(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"templates": s.mgr.ListTemplates()})
+}
+
+func (s *Server) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := s.mgr.DeleteTemplate(name); err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		case errors.Is(err, ErrTemplateBuiltin), errors.Is(err, ErrBadTemplateName):
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		default:
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		}
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleExtend resets a machine's TTL ("I need a few more minutes"). Body
 // {"ttl_seconds": n} — omitted/0 means the default TTL; clamped like create.
 func (s *Server) handleExtend(w http.ResponseWriter, r *http.Request) {
@@ -247,9 +308,22 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleBranch forks a machine. ?count=N (fleet fork) makes N clones from one
+// snapshot and returns {"machines":[...]}; without it (or count=1) the response
+// stays a bare machine for backward compatibility.
 func (s *Server) handleBranch(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	m, err := s.mgr.Branch(id, clientIP(r, s.cfg.TrustProxy))
+	count := 1
+	if c := r.URL.Query().Get("count"); c != "" {
+		n, err := strconv.Atoi(c)
+		if err != nil || n < 1 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "count must be a positive integer"})
+			return
+		}
+		count = n
+	}
+
+	forks, err := s.mgr.BranchN(id, clientIP(r, s.cfg.TrustProxy), count)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrNotFound):
@@ -264,7 +338,15 @@ func (s *Server) handleBranch(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	writeJSON(w, http.StatusCreated, m.View())
+	if count <= 1 {
+		writeJSON(w, http.StatusCreated, forks[0].View())
+		return
+	}
+	views := make([]machineView, len(forks))
+	for i, m := range forks {
+		views[i] = m.View()
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"machines": views, "requested": count})
 }
 
 // writeJSON writes a JSON response with the given status code.
