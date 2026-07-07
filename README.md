@@ -1,5 +1,7 @@
 # boring computers
 
+[![CI](https://github.com/michaelshimeles/boring-computers/actions/workflows/ci.yml/badge.svg)](https://github.com/michaelshimeles/boring-computers/actions/workflows/ci.yml)
+
 **On-demand Linux computers you can hand to an AI.**
 
 Each one is a real [Firecracker](https://firecracker-microvm.github.io/) microVM —

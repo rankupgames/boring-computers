@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    name: boringd (vet + build, amd64 + arm64)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: boringd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: boringd/go.mod
+          cache-dependency-path: boringd/go.sum
+      - run: go vet ./...
+      - run: go build ./...
+      # The infra ships to x86_64 and arm64 hosts (and the Mac/Lima local path
+      # is arm64) — keep both compiling.
+      - run: GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build ./...
+      - run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ./...
+
+  web:
+    name: web + sdk (check, lint, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run lint
+      - run: npm test -w boring-computers-sdk
+      - run: npm test -w web
+      - run: npm run build -w boring-computers-sdk
+
+  shell:
+    name: infra scripts (shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Errors only — the scripts are heavy on intentional word-splitting and
+      # ssh-heredoc patterns that trip stylistic levels.
+      - run: shellcheck -S error infra/*.sh infra/latitude/*.sh infra/local/*.sh
