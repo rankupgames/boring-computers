@@ -8,7 +8,11 @@ Tools: `launch_computer`, `run_task` (give it a plain-English task and an agent
 writes + runs the code, returning a live preview URL if it starts a server),
 `screenshot`, `preview_url`, `fork_computer`, `list_computers`, `stop_computer`.
 
-No key required — it uses the public, rate-limited endpoint by default.
+It talks to **your own boringd** — there is no public hosted endpoint. Set
+`BORING_URL` to wherever yours runs (defaults to `http://localhost:8080`, which
+is right if boringd is on the same machine or reached over an SSH tunnel; the
+Mac/Lima local setup forwards to `http://localhost:8088`). If your boringd sets
+`BORING_TOKEN`, pass the same value so the server can authenticate.
 
 > Not published to npm yet — run it from source.
 
@@ -17,9 +21,7 @@ No key required — it uses the public, rate-limited endpoint by default.
 ```bash
 git clone https://github.com/michaelshimeles/boring-computers
 cd boring-computers && npm install
-node packages/mcp/index.mjs
-# point at a different endpoint (e.g. your own boringd):
-BORING_URL=https://your-boringd node packages/mcp/index.mjs
+BORING_URL=http://localhost:8080 node packages/mcp/index.mjs
 ```
 
 ## Claude Desktop
@@ -32,7 +34,8 @@ snake game."_
 	"mcpServers": {
 		"boring-computers": {
 			"command": "node",
-			"args": ["/absolute/path/to/boring-computers/packages/mcp/index.mjs"]
+			"args": ["/absolute/path/to/boring-computers/packages/mcp/index.mjs"],
+			"env": { "BORING_URL": "http://localhost:8080" }
 		}
 	}
 }

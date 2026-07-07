@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // MCP server for boring computers. Lets any MCP client (Claude Desktop, Cursor,
 // etc.) spin up and drive a real Linux computer: run tasks, take screenshots,
-// fork it, expose ports. Wraps the public boringd API — no key required.
+// fork it, expose ports. Talks to YOUR boringd (self-hosted; no public endpoint).
 //
-//   npx @boring/mcp        (or: node index.mjs)
-//   env BORING_URL=https://…  to point at a different endpoint
+//   BORING_URL=http://localhost:8080 node index.mjs
+//   (BORING_URL defaults to http://localhost:8080)
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';

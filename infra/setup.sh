@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# setup.sh — turn a fresh Ubuntu 24.04 x86_64 box with /dev/kvm into a running
-# boringd (the boring computers control plane), end to end, from your laptop.
+# setup.sh — turn a fresh Ubuntu 24.04 box (x86_64 or arm64) with /dev/kvm into a
+# running boringd (the boring computers control plane), end to end, from your laptop.
 #
 # Provider-agnostic: works on any such box you can root-SSH into (Latitude,
 # Hetzner, a bare-metal, a nested-virt VM, …). Idempotent — safe to re-run.
@@ -36,9 +36,13 @@ die() { printf '\033[1;31m[setup:error]\033[0m %s\n' "$*" >&2; exit 1; }
 log "Preflight on ${TARGET}…"
 "${SSH[@]}" 'true' || die "can't SSH to ${TARGET}"
 eval "$("${SSH[@]}" 'echo ARCH=$(uname -m) KVM=$([ -e /dev/kvm ] && echo yes || echo no) ID=$(. /etc/os-release; echo $VERSION_ID)')"
-[[ "${ARCH}" == "x86_64" ]] || die "box arch is ${ARCH}; boringd needs x86_64"
+case "${ARCH}" in
+	x86_64) GOARCH="amd64" ;;
+	aarch64) GOARCH="arm64" ;;
+	*) die "box arch is ${ARCH}; boringd needs x86_64 or aarch64" ;;
+esac
 [[ "${KVM}" == "yes" ]] || die "/dev/kvm missing — the box needs hardware/nested virtualization"
-log "  ok: Ubuntu ${ID:-?} x86_64 with /dev/kvm"
+log "  ok: Ubuntu ${ID:-?} ${ARCH} with /dev/kvm"
 
 # --- 1. ship infra scripts + boringd source ----------------------------------
 log "Copying infra scripts + boringd source…"
@@ -53,7 +57,7 @@ rsync -az --delete -e "ssh -o StrictHostKeyChecking=accept-new" \
 log "Ensuring Go ${GO_VERSION}…"
 "${SSH[@]}" bash -euo pipefail <<EOF
 if ! /usr/local/go/bin/go version 2>/dev/null | grep -q "go${GO_VERSION}"; then
-  curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
+  curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" -o /tmp/go.tgz
   rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz && rm -f /tmp/go.tgz
 fi
 /usr/local/go/bin/go version
