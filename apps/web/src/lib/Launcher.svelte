@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import Workstation from '$lib/Workstation.svelte';
 	import Chassis from '$lib/Chassis.svelte';
-	import { fleetCount } from '$lib/boring';
+	import { listMachines, destroyMachine, type Machine } from '$lib/boring';
 
 	// One computer with everything on it: a live desktop (browser + GUI), a real
 	// terminal (its serial shell, coding agents preinstalled), and an AI prompt
@@ -12,16 +12,37 @@
 	// ?restore=vol-… launches straight into a computer with that volume attached.
 	let restore = $state<string | undefined>(undefined);
 
-	let fleet = $state(0);
+	// The fleet: every machine running on this host — expand to stop any of them.
+	let fleet = $state<Machine[]>([]);
+	let showFleet = $state(false);
+	let killing = $state<Record<string, boolean>>({});
+
+	async function refreshFleet() {
+		fleet = await listMachines();
+	}
+	async function kill(id: string) {
+		if (killing[id]) return;
+		killing[id] = true;
+		try {
+			await destroyMachine(id);
+			fleet = fleet.filter((m) => m.id !== id);
+		} finally {
+			delete killing[id];
+		}
+	}
+	async function killAll() {
+		await Promise.all(fleet.map((m) => destroyMachine(m.id).catch(() => {})));
+		await refreshFleet();
+	}
+
 	onMount(() => {
 		const vol = new URLSearchParams(location.search).get('restore');
 		if (vol) {
 			restore = vol;
 			launched = true;
 		}
-		const tick = async () => (fleet = await fleetCount());
-		void tick();
-		const t = setInterval(tick, 4000);
+		void refreshFleet();
+		const t = setInterval(refreshFleet, 4000);
 		return () => clearInterval(t);
 	});
 
@@ -178,12 +199,49 @@
 						{/if}
 					</div>
 
-					{#if fleet > 0}
-						<p class="font-mono text-[11px] text-ink-faint tabular-nums">
-							<span class="text-success">●</span>
-							{fleet}
-							{fleet === 1 ? 'computer' : 'computers'} running right now
-						</p>
+					{#if fleet.length > 0}
+						<div class="flex flex-col gap-1.5 font-mono text-[11px]">
+							<div class="flex items-center gap-2">
+								<button
+									onclick={() => (showFleet = !showFleet)}
+									class="text-ink-faint tabular-nums transition-colors hover:text-ink-muted"
+								>
+									<span class="text-success">●</span>
+									{fleet.length}
+									{fleet.length === 1 ? 'computer' : 'computers'} running
+									<span class="text-ink-faint">{showFleet ? '▾' : '▸'}</span>
+								</button>
+								{#if fleet.length > 1}
+									<button
+										onclick={killAll}
+										class="text-ink-faint transition-colors hover:text-red-400"
+										title="Stop all running computers">stop all</button
+									>
+								{/if}
+							</div>
+
+							{#if showFleet}
+								<ul class="flex flex-col gap-1">
+									{#each fleet as m (m.id)}
+										<li
+											class="flex items-center gap-2 rounded-[5px] border border-line bg-surface px-2 py-1 text-ink-muted"
+										>
+											<span class="text-ink-subtle">{m.template ?? 'computer'}</span>
+											<span class="text-ink-faint">{m.id}</span>
+											{#if m.persistent}<span class="text-ink-faint" title="no auto-shutdown"
+													>∞</span
+												>{/if}
+											<button
+												onclick={() => kill(m.id)}
+												disabled={killing[m.id]}
+												class="ml-auto text-ink-subtle transition-colors hover:text-red-400 disabled:opacity-40"
+												title="Stop this computer">{killing[m.id] ? '…' : 'stop ✕'}</button
+											>
+										</li>
+									{/each}
+								</ul>
+							{/if}
+						</div>
 					{/if}
 				</div>
 			</div>

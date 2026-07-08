@@ -144,10 +144,30 @@ export type Machine = {
 	id: string;
 	mode: string;
 	boot_ms: number;
+	template?: string;
 	expires_at?: string;
 	display?: boolean;
 	persistent?: boolean;
+	parent?: string;
 };
+
+/** List every running machine. Returns [] on any error. */
+export async function listMachines(): Promise<Machine[]> {
+	try {
+		const res = await fetch(`${apiBase}/v1/machines`);
+		if (!res.ok) return [];
+		const j = await res.json();
+		return Array.isArray(j?.machines) ? (j.machines as Machine[]) : [];
+	} catch {
+		return [];
+	}
+}
+
+/** Destroy a machine by id (204 or 404 are both fine — it's gone either way). */
+export async function destroyMachine(id: string): Promise<void> {
+	const res = await fetch(`${apiBase}/v1/machines/${encodeURIComponent(id)}`, { method: 'DELETE' });
+	if (!res.ok && res.status !== 404) throw new Error(`couldn't stop ${id} (${res.status})`);
+}
 
 /** Fetch an existing machine by id (for reconnecting to a shared session). */
 export async function getMachine(id: string): Promise<Machine> {
