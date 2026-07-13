@@ -38,6 +38,16 @@ func (c Config) Template(name string) Template {
 			Snapshot:  false, // cold boot for now; Xvfb comes up in a few seconds
 			Display:   true,
 		}
+	case "unterm-builder":
+		return Template{
+			Name:      "unterm-builder",
+			Rootfs:    c.BuilderRootfs,
+			MemSizeMB: c.BuilderMemSizeMB,
+			VCPUs:     c.BuilderVCPUs,
+			Vsock:     true,
+			Snapshot:  false,
+			Display:   false,
+		}
 	default:
 		if meta, ok := loadTemplateMeta(c, name); ok {
 			return Template{

@@ -18,10 +18,18 @@ func main() {
 	// Flags override env where provided (env already loaded as defaults).
 	flag.StringVar(&cfg.Addr, "addr", cfg.Addr, "listen address")
 	flag.IntVar(&cfg.MaxMachines, "max", cfg.MaxMachines, "max live machines")
+	checkConfig := flag.Bool("check-config", false, "validate configuration and exit")
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
 	log.SetPrefix("boringd ")
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("configuration error: %v", err)
+	}
+	if *checkConfig {
+		log.Printf("configuration valid")
+		return
+	}
 
 	// Clean up any VMs/artifacts orphaned by a previous unclean exit before we
 	// start booting new ones (boringd starts with an empty map, so anything

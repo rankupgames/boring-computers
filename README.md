@@ -113,6 +113,11 @@ the server enables `BORING_ALLOW_PERSISTENT`). Guests are network-isolated
 behind an egress firewall. The control plane is [`boringd/`](boringd) (Go); host
 setup is one command ([`infra/setup.sh`](infra/setup.sh)).
 
+The hardened single-worker deployment used for Unity-Unterm auditing is
+documented in [`infra/rankup/README.md`](infra/rankup/README.md). It adds a
+fail-closed loopback-only profile, a Rust builder rootfs, and WispKey
+Firecracker-vsock verification without changing the public demo defaults.
+
 ## Repo
 
 A [Turborepo](https://turbo.build/repo) monorepo (npm workspaces):

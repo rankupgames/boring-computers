@@ -3,17 +3,28 @@ package main
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config holds all runtime configuration for boringd. Values come from env with
 // the fixed defaults described in the boring-computers contract.
 type Config struct {
+	// SecurityProfile enables a named, fail-closed deployment policy. Empty keeps
+	// the general-purpose upstream behavior; "isolated-worker" is the hardened
+	// single-worker policy used by the Rank Up build host.
+	SecurityProfile string
+
 	// Listen address for the HTTP/WS server.
 	Addr string
 
 	// Token, if non-empty, requires "Authorization: Bearer <token>" on /v1/*
 	// routes (and ?token= on the WebSocket route). /healthz is always open.
-	Token string
+	Token          string
+	tokenLoadError error
+
+	// AllowQueryToken permits bearer tokens in URL query strings for WebSocket
+	// clients. Hardened workers disable this to keep credentials out of URLs.
+	AllowQueryToken bool
 
 	// CORSOrigin is sent as Access-Control-Allow-Origin so a browser on another
 	// origin (the deployed site) can call the public endpoint. "" disables CORS.
@@ -38,6 +49,7 @@ type Config struct {
 	KernelPath     string // /opt/boring/kernel/vmlinux
 	BaseRootfs     string // /opt/boring/rootfs/rootfs.ext4
 	DesktopRootfs  string // /opt/boring/rootfs/desktop.ext4
+	BuilderRootfs  string // /opt/boring/rootfs/unterm-builder.ext4
 	TemplatesDir   string // /opt/boring/templates
 	RunDir         string // /opt/boring/run
 
@@ -52,8 +64,10 @@ type Config struct {
 	AllowPersistent bool
 
 	// Guest machine sizing.
-	VCPUs     int
-	MemSizeMB int
+	VCPUs            int
+	MemSizeMB        int
+	BuilderVCPUs     int
+	BuilderMemSizeMB int
 
 	// Public-facing abuse controls.
 	PerIPMax         int  // max concurrent machines per client IP
@@ -72,8 +86,9 @@ type Config struct {
 	NetSubnet string // guest /24 prefix, e.g. 10.200.0 (gateway .1)
 
 	// Preview: expose a guest port at <id>--<port>.<PreviewBase>.
-	PreviewBase string // BORING_PREVIEW_BASE, e.g. previews.example.com ("" disables previews)
-	LeasesPath  string // dnsmasq lease file, for guest IP lookup
+	PreviewBase    string // BORING_PREVIEW_BASE, e.g. previews.example.com ("" disables previews)
+	LeasesPath     string // dnsmasq lease file, for guest IP lookup
+	DisablePreview bool
 
 	// Storage: persistent volumes on an S3-compatible store (MinIO / Latitude).
 	// Enabled when S3Endpoint is set.
@@ -119,9 +134,13 @@ type Config struct {
 
 // LoadConfig builds a Config from the environment, applying the fixed defaults.
 func LoadConfig() Config {
+	token, tokenLoadError := loadSecret("BORING_TOKEN", "BORING_TOKEN_FILE")
 	c := Config{
+		SecurityProfile:     os.Getenv("BORING_SECURITY_PROFILE"),
 		Addr:                envStr("BORING_ADDR", "0.0.0.0:8080"),
-		Token:               os.Getenv("BORING_TOKEN"),
+		Token:               token,
+		tokenLoadError:      tokenLoadError,
+		AllowQueryToken:     envBool("BORING_ALLOW_QUERY_TOKEN", true),
 		CORSOrigin:          os.Getenv("BORING_CORS_ORIGIN"),
 		MaxMachines:         envInt("BORING_MAX", 20),
 		MaxTemplates:        envInt("BORING_MAX_TEMPLATES", 10),
@@ -132,13 +151,16 @@ func LoadConfig() Config {
 		KernelPath:          envStr("BORING_KERNEL", "/opt/boring/kernel/vmlinux"),
 		BaseRootfs:          envStr("BORING_ROOTFS", "/opt/boring/rootfs/rootfs.ext4"),
 		DesktopRootfs:       envStr("BORING_DESKTOP_ROOTFS", "/opt/boring/rootfs/desktop.ext4"),
+		BuilderRootfs:       envStr("BORING_BUILDER_ROOTFS", "/opt/boring/rootfs/unterm-builder.ext4"),
 		TemplatesDir:        envStr("BORING_TEMPLATES", "/opt/boring/templates"),
 		RunDir:              envStr("BORING_RUN", "/opt/boring/run"),
-		DefaultTTL:          120,
-		MinTTL:              15,
-		MaxTTL:              900,
-		VCPUs:               1,
-		MemSizeMB:           256,
+		DefaultTTL:          envInt("BORING_DEFAULT_TTL", 120),
+		MinTTL:              envInt("BORING_MIN_TTL", 15),
+		MaxTTL:              envInt("BORING_MAX_TTL", 900),
+		VCPUs:               envInt("BORING_VCPUS", 1),
+		MemSizeMB:           envInt("BORING_MEM_MB", 256),
+		BuilderVCPUs:        envInt("BORING_BUILDER_VCPUS", 2),
+		BuilderMemSizeMB:    envInt("BORING_BUILDER_MEM_MB", 4096),
 		PerIPMax:            envInt("BORING_PER_IP_MAX", 2),
 		CreateRatePerMin:    envInt("BORING_CREATE_RATE", 8),
 		TrustProxy:          os.Getenv("BORING_TRUST_PROXY") == "1",
@@ -150,6 +172,7 @@ func LoadConfig() Config {
 		NetSubnet:           envStr("BORING_NET_SUBNET", "10.200.0"),
 		PreviewBase:         os.Getenv("BORING_PREVIEW_BASE"), // deployment-specific; unset disables previews
 		LeasesPath:          envStr("BORING_LEASES", "/var/lib/misc/dnsmasq.leases"),
+		DisablePreview:      os.Getenv("BORING_DISABLE_PREVIEW") == "1",
 		S3Endpoint:          os.Getenv("BORING_S3_ENDPOINT"),
 		S3Key:               os.Getenv("BORING_S3_KEY"),
 		S3Secret:            os.Getenv("BORING_S3_SECRET"),
@@ -210,4 +233,40 @@ func envInt(key string, def int) int {
 		}
 	}
 	return def
+}
+
+// envBool reads the common 1/0 boolean form while preserving an explicit
+// default for backward-compatible settings.
+func envBool(key string, def bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return def
+	}
+	return value == "1"
+}
+
+// loadSecret accepts either a direct environment value or a protected file,
+// never both. systemd credentials use the file path so the token is absent from
+// the daemon's inherited environment and command line.
+func loadSecret(valueKey, fileKey string) (string, error) {
+	value := os.Getenv(valueKey)
+	path := os.Getenv(fileKey)
+	if value != "" && path != "" {
+		return "", &configError{message: valueKey + " and " + fileKey + " are mutually exclusive"}
+	}
+	if path == "" {
+		return value, nil
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", &configError{message: "inspect " + fileKey + ": " + err.Error()}
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return "", &configError{message: fileKey + " must be a regular file inaccessible to group and other users"}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", &configError{message: "read " + fileKey + ": " + err.Error()}
+	}
+	return strings.TrimSpace(string(data)), nil
 }
