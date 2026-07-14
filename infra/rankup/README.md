@@ -130,13 +130,12 @@ only with a disposable WispKey vault and two synthetic credential references:
 
 ```bash
 sudo -v
-BORING_URL=http://127.0.0.1:8080 \
-  ./infra/rankup/verify-wispkey-vsock.sh \
-  synthetic-in-scope synthetic-out-of-scope '<synthetic-target-url>'
+BORING_URL=http://127.0.0.1:8080 ./infra/rankup/run-synthetic-wispkey-proof.sh
 ```
 
-The synthetic target must return a non-401/non-403 response after WispKey
-substitution. The harness proves this sequence through guest AF_VSOCK:
+The wrapper creates a temporary WispKey vault, two synthetic credentials, and a
+loopback-only target, then deletes the entire vault on exit. The harness proves
+this sequence through guest AF_VSOCK:
 
 1. an enrolled in-scope token reaches the synthetic target;
 2. an out-of-scope token returns `403` and queues an access request;
@@ -144,10 +143,11 @@ substitution. The harness proves this sequence through guest AF_VSOCK:
 4. instance revocation makes the original identity return `401`.
 
 The harness suppresses guest TTY echo while injecting the one-time instance
-identity, never prints token values, and revokes/deletes its disposable state.
-The relay assigns its private `0600` Firecracker port socket to the configured
-jailer UID/GID, so the unprivileged Firecracker process can connect without
-making the credential channel available to other host users.
+identity, never prints token values, and revokes its enrolled instance. The
+wrapper then removes the disposable vault, credentials, requests, and audit
+state. The relay assigns its private `0600` Firecracker port socket to the
+configured jailer UID/GID, so the unprivileged Firecracker process can connect
+without making the credential channel available to other host users.
 For a separated production topology, run WispKey on the coordinator with
 identity required, carry its loopback listener through an SSH tunnel, and point
 `wispkey-vsock-relay` only at the worker's loopback end. The relay rejects
