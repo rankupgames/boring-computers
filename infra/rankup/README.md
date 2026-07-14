@@ -157,5 +157,8 @@ npm run lint
 npm run build
 ```
 
+The same gates run in GitHub Actions for pull requests and can be dispatched
+manually against an exact reviewed branch when validating fork infrastructure.
+
 The repository `.npmrc` enforces `min-release-age=7`; use npm 11.14.1 or newer
 and do not replace `npm ci` with an unlocked install.
