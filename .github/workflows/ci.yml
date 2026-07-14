@@ -69,5 +69,5 @@ jobs:
       - run: shellcheck -S error infra/*.sh infra/latitude/*.sh infra/local/*.sh infra/rankup/*.sh
       - name: Verify rootfs architecture mirrors
         run: |
-          test "$(infra/rankup/build-unterm-builder-rootfs.sh --print-platform x86_64)" = $'x86_64-unknown-linux-gnu\thttp://archive.ubuntu.com/ubuntu'
-          test "$(infra/rankup/build-unterm-builder-rootfs.sh --print-platform aarch64)" = $'aarch64-unknown-linux-gnu\thttp://ports.ubuntu.com/ubuntu-ports'
+          test "$(infra/rankup/build-unterm-builder-rootfs.sh --print-platform x86_64)" = $'x86_64-unknown-linux-gnu\thttp://archive.ubuntu.com/ubuntu\thttp://security.ubuntu.com/ubuntu'
+          test "$(infra/rankup/build-unterm-builder-rootfs.sh --print-platform aarch64)" = $'aarch64-unknown-linux-gnu\thttp://ports.ubuntu.com/ubuntu-ports\thttp://ports.ubuntu.com/ubuntu-ports'
