@@ -121,10 +121,16 @@ chroot "${mount_dir}" /usr/bin/env \
 	/opt/cargo/bin/cargo install --locked --version "${cargo_deny_version}" cargo-deny
 
 # Serial-console commands and uploaded automation scripts are not guaranteed to
-# start a login shell, so expose the pinned Rust proxies and cargo tools through
-# the default system PATH as well as /etc/profile.d.
+# start a login shell. Install wrappers on the default system PATH so rustup
+# proxies always use the pinned shared toolchain, even without /etc/profile.d.
 for rust_command in cargo rustc rustup rustfmt cargo-clippy cargo-audit cargo-deny; do
-	ln -sfn "/opt/cargo/bin/${rust_command}" "${mount_dir}/usr/local/bin/${rust_command}"
+	cat > "${mount_dir}/usr/local/bin/${rust_command}" <<WRAPPER
+#!/bin/sh
+export RUSTUP_HOME=/opt/rustup
+export CARGO_HOME=/opt/cargo
+exec /opt/cargo/bin/${rust_command} "\$@"
+WRAPPER
+	chmod 0755 "${mount_dir}/usr/local/bin/${rust_command}"
 done
 
 cat > "${mount_dir}/etc/profile.d/rust.sh" <<'PROFILE'

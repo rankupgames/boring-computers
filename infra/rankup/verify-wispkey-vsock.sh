@@ -75,9 +75,11 @@ cleanup() {
 	fi
 	if [[ -n "${relay_pid}" ]]; then
 		sudo -n kill "${relay_pid}" >/dev/null 2>&1 || true
+		wait "${relay_pid}" >/dev/null 2>&1 || true
 	fi
 	if [[ -n "${wispkey_pid}" ]]; then
 		kill "${wispkey_pid}" >/dev/null 2>&1 || true
+		wait "${wispkey_pid}" >/dev/null 2>&1 || true
 	fi
 	if [[ -n "${instance_name}" ]]; then
 		"${wispkey_bin}" instance revoke "${instance_name}" >/dev/null 2>&1 || true

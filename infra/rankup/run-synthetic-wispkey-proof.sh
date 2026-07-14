@@ -44,16 +44,28 @@ printf '%s' "${synthetic_in_scope}" | "${wispkey_bin}" add synthetic-in-scope \
 printf '%s' "${synthetic_out_of_scope}" | "${wispkey_bin}" add synthetic-out-of-scope \
 	--type bearer_token --description "Disposable out-of-scope Firecracker proof credential" \
 	--hosts 127.0.0.1 --tags synthetic,firecracker-proof --value-file - >/dev/null
-unset synthetic_in_scope synthetic_out_of_scope
 
 port_file="${work}/target.port"
-python3 - "${port_file}" >"${work}/target.log" 2>&1 <<'PYTHON' &
+SYNTHETIC_IN_SCOPE="${synthetic_in_scope}" \
+	SYNTHETIC_OUT_OF_SCOPE="${synthetic_out_of_scope}" \
+	python3 - "${port_file}" >"${work}/target.log" 2>&1 <<'PYTHON' &
 import http.server
+import os
 import sys
+
+
+expected_authorizations = {
+    f"Bearer {os.environ['SYNTHETIC_IN_SCOPE']}",
+    f"Bearer {os.environ['SYNTHETIC_OUT_OF_SCOPE']}",
+}
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.headers.get("Authorization") not in expected_authorizations:
+            self.send_response(401)
+            self.end_headers()
+            return
         self.send_response(204)
         self.end_headers()
 
@@ -68,6 +80,7 @@ with open(sys.argv[1], "w", encoding="ascii") as handle:
 server.serve_forever()
 PYTHON
 target_pid=$!
+unset synthetic_in_scope synthetic_out_of_scope
 
 for _ in {1..100}; do
 	[[ -s "${port_file}" ]] && break
