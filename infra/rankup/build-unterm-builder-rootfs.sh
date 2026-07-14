@@ -8,7 +8,7 @@ image_size_mb="${IMAGE_SIZE_MB:-8192}"
 rustup_version="${RUSTUP_VERSION:-1.28.2}"
 rust_toolchain="${RUST_TOOLCHAIN:-1.94.1}"
 cargo_audit_version="${CARGO_AUDIT_VERSION:-0.22.2}"
-cargo_deny_version="${CARGO_DENY_VERSION:-0.18.4}"
+cargo_deny_version="${CARGO_DENY_VERSION:-0.19.9}"
 
 platform_for_arch() {
 	case "$1" in
@@ -140,8 +140,8 @@ export PATH=/opt/cargo/bin:$PATH
 PROFILE
 
 # The Firecracker kernel starts this purpose-built init directly. Mount the
-# kernel API filesystems, announce readiness, then hand the serial console to
-# an autologin shell without adding a full init-system dependency.
+# kernel API filesystems, then hand the serial console to an autologin shell;
+# its first prompt announces readiness without a full init-system dependency.
 cat > "${mount_dir}/usr/local/sbin/boring-builder-init" <<'INIT'
 #!/bin/sh
 set -eu
