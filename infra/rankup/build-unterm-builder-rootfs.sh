@@ -79,6 +79,15 @@ apt-get clean
 rm -rf /var/lib/apt/lists/*
 CHROOT
 
+# The build-time chroot can use the host resolver, but the booted microVM has no
+# systemd-resolved stub at 127.0.0.53. Route guest DNS through the isolated
+# bridge's dnsmasq listener instead.
+rm -f "${mount_dir}/etc/resolv.conf"
+cat > "${mount_dir}/etc/resolv.conf" <<'RESOLV'
+nameserver 10.200.0.1
+options timeout:2 attempts:3
+RESOLV
+
 rustup_url="https://static.rust-lang.org/rustup/archive/${rustup_version}/${rust_target}/rustup-init"
 curl -fsSL "${rustup_url}" -o "${mount_dir}/tmp/rustup-init"
 rustup_checksum_record="$(curl -fsSL "${rustup_url}.sha256")"
