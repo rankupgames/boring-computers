@@ -148,12 +148,20 @@ set -eu
 
 [ -e /proc/self ] || mount -t proc proc /proc
 [ -e /sys/kernel ] || mount -t sysfs sysfs /sys
-[ -e /dev/null ] || mount -t devtmpfs devtmpfs /dev
+if ! grep -qs ' /dev devtmpfs ' /proc/mounts; then
+	mount -t devtmpfs devtmpfs /dev
+fi
 
-printf '%s\n' BORING_READY > /dev/ttyS0
 exec /sbin/agetty --autologin root --noclear ttyS0 115200,38400,9600 vt220
 INIT
 chmod 0755 "${mount_dir}/usr/local/sbin/boring-builder-init"
+
+# The marker is part of the first interactive prompt, so boringd cannot race
+# agetty's terminal reset or the autologin handoff.
+cat > "${mount_dir}/root/.bash_profile" <<'PROFILE'
+export PS1='BORING_READY root@boring:\w# '
+PROFILE
+chmod 0600 "${mount_dir}/root/.bash_profile"
 
 cat > "${mount_dir}/usr/local/bin/wispkey-vsock-request" <<'PYTHON'
 #!/usr/bin/env python3
