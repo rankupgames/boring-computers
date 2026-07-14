@@ -6,8 +6,8 @@ rootfs_dir="${boring_root}/rootfs"
 image="${rootfs_dir}/unterm-builder.ext4"
 image_size_mb="${IMAGE_SIZE_MB:-8192}"
 rustup_version="${RUSTUP_VERSION:-1.28.2}"
-rust_toolchain="${RUST_TOOLCHAIN:-1.91.1}"
-cargo_audit_version="${CARGO_AUDIT_VERSION:-0.21.2}"
+rust_toolchain="${RUST_TOOLCHAIN:-1.94.1}"
+cargo_audit_version="${CARGO_AUDIT_VERSION:-0.22.2}"
 cargo_deny_version="${CARGO_DENY_VERSION:-0.18.4}"
 
 platform_for_arch() {
@@ -139,9 +139,9 @@ export CARGO_HOME=/opt/cargo
 export PATH=/opt/cargo/bin:$PATH
 PROFILE
 
-# The Firecracker kernel starts the builder through this explicit init wrapper.
-# Mount kernel API filesystems before handing PID 1 to systemd so serial
-# automation and rustup work reliably on the minimal rootfs.
+# The Firecracker kernel starts this purpose-built init directly. Mount the
+# kernel API filesystems, announce readiness, then hand the serial console to
+# an autologin shell without adding a full init-system dependency.
 cat > "${mount_dir}/usr/local/sbin/boring-builder-init" <<'INIT'
 #!/bin/sh
 set -eu
@@ -150,34 +150,10 @@ set -eu
 [ -e /sys/kernel ] || mount -t sysfs sysfs /sys
 [ -e /dev/null ] || mount -t devtmpfs devtmpfs /dev
 
-exec /lib/systemd/systemd "$@"
+printf '%s\n' BORING_READY > /dev/ttyS0
+exec /sbin/agetty --autologin root --noclear ttyS0 115200,38400,9600 vt220
 INIT
 chmod 0755 "${mount_dir}/usr/local/sbin/boring-builder-init"
-
-install -d -m0755 \
-	"${mount_dir}/etc/systemd/system/serial-getty@ttyS0.service.d" \
-	"${mount_dir}/etc/systemd/system/multi-user.target.wants" \
-	"${mount_dir}/etc/systemd/system/getty.target.wants"
-cat > "${mount_dir}/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf" <<'GETTY'
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin root --noclear %I 115200,38400,9600 vt220
-GETTY
-
-cat > "${mount_dir}/etc/systemd/system/boring-ready.service" <<'READY'
-[Unit]
-Description=Signal Firecracker guest readiness
-After=systemd-remount-fs.service
-
-[Service]
-Type=oneshot
-ExecStart=/bin/sh -c 'echo BORING_READY > /dev/ttyS0'
-
-[Install]
-WantedBy=multi-user.target
-READY
-ln -s ../boring-ready.service "${mount_dir}/etc/systemd/system/multi-user.target.wants/boring-ready.service"
-ln -s /lib/systemd/system/serial-getty@.service "${mount_dir}/etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service"
 
 cat > "${mount_dir}/usr/local/bin/wispkey-vsock-request" <<'PYTHON'
 #!/usr/bin/env python3

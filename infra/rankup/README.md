@@ -104,20 +104,28 @@ dependency audit. The host firewall blocks loopback, link-local and metadata
 ranges, private networks, the guest subnet, SMTP, and high-rate connection
 scanning. The job must not receive a repository write token.
 
-Inside the guest:
+Unity-Unterm's current native library is explicitly macOS/Windows-only; its
+Linux debugger backend is still a future path. On this Linux worker, run the
+platform-independent repository gates and export any formatter changes:
 
 ```bash
 git clone --filter=blob:none https://github.com/rankupgames/Unity-Unterm.git
-cd Unity-Unterm
+cd Unity-Unterm/native
+cargo fmt
 cargo fmt --check
-cargo check --locked
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
+cargo metadata --locked --no-deps --format-version 1
 cargo audit
 cargo deny check
+cd ..
 git diff --binary --full-index > /tmp/unterm.patch
 sha256sum /tmp/unterm.patch > /tmp/unterm.patch.sha256
 ```
+
+The lifecycle proof separately creates a dependency-free Rust fixture inside
+the same microVM and runs `cargo fmt --check`, `cargo check --locked`,
+`cargo clippy --locked --all-targets -- -D warnings`, and `cargo test --locked`.
+Do not claim a Linux build of the Unity native plugin until its shared-surface
+and `unity-native-plugin` backends are implemented for Linux.
 
 The trusted coordinator downloads only the patch and checksum, rejects absolute
 paths, `..` traversal, symlinks, unexpected repositories, and paths outside the
