@@ -37,8 +37,10 @@ func NewServer(cfg Config, mgr *Manager) *Server {
 	// Open route: health check (never requires auth).
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
 
-	// Caddy on-demand-TLS gate for preview subdomains (open, internal).
-	s.mux.HandleFunc("GET /internal/tls-check", s.handleTLSCheck)
+	if !cfg.DisablePreview {
+		// Caddy on-demand-TLS gate for preview subdomains (open, internal).
+		s.mux.HandleFunc("GET /internal/tls-check", s.handleTLSCheck)
+	}
 
 	// Inference gateway (OpenAI-compatible; keys are server-side, per-IP capped).
 	s.mux.Handle("POST /v1/chat/completions", s.auth(http.HandlerFunc(s.handleChatCompletions)))
@@ -66,11 +68,13 @@ func NewServer(cfg Config, mgr *Manager) *Server {
 	s.mux.Handle("POST /v1/machines/{id}/upload", s.auth(http.HandlerFunc(s.handleUpload)))
 	s.mux.Handle("GET /v1/machines/{id}/download", s.auth(http.HandlerFunc(s.handleDownload)))
 
-	// Path-based preview: reverse-proxy a guest port (works over the tunnel /
-	// without wildcard DNS). Any method, sub-paths, and WS upgrades.
-	// No auth: previews are opened in new browser tabs (window.open) which can't
-	// add Authorization headers. The machine ID itself is the access token.
-	s.mux.HandleFunc("/v1/machines/{id}/web/{port}/{path...}", s.handleWebProxy)
+	if !cfg.DisablePreview {
+		// Path-based preview: reverse-proxy a guest port (works over the tunnel /
+		// without wildcard DNS). Any method, sub-paths, and WS upgrades.
+		// No auth: previews are opened in new browser tabs (window.open) which can't
+		// add Authorization headers. The machine ID itself is the access token.
+		s.mux.HandleFunc("/v1/machines/{id}/web/{port}/{path...}", s.handleWebProxy)
+	}
 
 	// Persistent volumes (S3-backed). Registered only when storage is configured.
 	if s.storage != nil {
@@ -106,9 +110,11 @@ func NewServer(cfg Config, mgr *Manager) *Server {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Preview hosts (<id>--<port>.<base>) bypass the API entirely and reverse-
 	// proxy straight to the guest's port.
-	if id, port, ok := s.previewTarget(r.Host); ok {
-		s.handlePreview(w, r, id, port)
-		return
+	if !s.cfg.DisablePreview {
+		if id, port, ok := s.previewTarget(r.Host); ok {
+			s.handlePreview(w, r, id, port)
+			return
+		}
 	}
 	// CORS so a browser on the deployed site's origin can call this endpoint.
 	if o := s.cfg.CORSOrigin; o != "" {
@@ -138,7 +144,7 @@ func (s *Server) auth(next http.Handler) http.Handler {
 }
 
 // authorized returns true if the request carries the correct token, or if no
-// token is configured. Accepts both the Authorization header and ?token=.
+// token is configured. Query tokens are accepted only when explicitly enabled.
 func (s *Server) authorized(r *http.Request) bool {
 	if s.cfg.Token == "" {
 		return true
@@ -151,7 +157,11 @@ func (s *Server) authorized(r *http.Request) bool {
 			}
 		}
 	}
-	if q := r.URL.Query().Get("token"); q != "" {
+	if s.cfg.AllowQueryToken {
+		q := r.URL.Query().Get("token")
+		if q == "" {
+			return false
+		}
 		if subtle.ConstantTimeCompare([]byte(q), []byte(s.cfg.Token)) == 1 {
 			return true
 		}
