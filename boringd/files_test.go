@@ -20,3 +20,12 @@ func TestTransferCommandsUseSupportedGuestRuntime(t *testing.T) {
 		}
 	}
 }
+
+func TestDownloadCommandFramesExistenceAndSize(t *testing.T) {
+	command := downloadCommand(47003, "/tmp/possibly-empty.patch")
+	for _, fragment := range []string{"os.path.isfile", "struct.pack", "os.fstat"} {
+		if !strings.Contains(command, fragment) {
+			t.Fatalf("download command does not frame %q: %s", fragment, command)
+		}
+	}
+}

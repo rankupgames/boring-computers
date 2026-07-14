@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -50,7 +51,7 @@ func uploadCommand(port int, destination string) string {
 // downloadCommand starts a single-use guest sender without requiring Node.js.
 func downloadCommand(port int, source string) string {
 	return fmt.Sprintf(
-		`python3 -c 'import shutil,socket,sys;f=open(sys.argv[1],"rb");s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(("0.0.0.0",%d));s.listen(1);c,_=s.accept();o=c.makefile("wb");shutil.copyfileobj(f,o);o.close();f.close();c.close();s.close()' %s 2>/dev/null &`+"\n",
+		`python3 -c 'import os,shutil,socket,struct,sys;p=sys.argv[1];f=open(p,"rb") if os.path.isfile(p) else None;s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(("0.0.0.0",%d));s.listen(1);c,_=s.accept();c.sendall(bytes((1 if f else 0,))+struct.pack("!Q",os.fstat(f.fileno()).st_size if f else 0));o=c.makefile("wb");shutil.copyfileobj(f,o) if f else None;o.close();f.close() if f else None;c.close();s.close()' %s 2>/dev/null &`+"\n",
 		port, shellQuote(source))
 }
 
@@ -140,17 +141,23 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-	// Peek the first byte: a missing file makes node exit before sending anything.
-	first := make([]byte, 1)
+	// The guest sends an existence byte and an unsigned 64-bit size before the
+	// body. This distinguishes a valid empty artifact from a missing path.
+	metadata := make([]byte, 9)
 	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-	nr, _ := io.ReadFull(conn, first)
-	if nr == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "no such file, or it's empty"})
+	if _, err := io.ReadFull(conn, metadata); err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "guest downloader returned an invalid response"})
 		return
 	}
+	if metadata[0] != 1 {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "no such file"})
+		return
+	}
+	size := binary.BigEndian.Uint64(metadata[1:])
 	conn.SetReadDeadline(time.Time{})
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", sanitizeName(path.Base(p))))
-	w.Write(first[:nr])
-	io.Copy(w, conn)
+	if size > 0 {
+		_, _ = io.CopyN(w, conn, int64(size))
+	}
 }
