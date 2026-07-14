@@ -139,6 +139,21 @@ export CARGO_HOME=/opt/cargo
 export PATH=/opt/cargo/bin:$PATH
 PROFILE
 
+# The Firecracker kernel starts the builder through this explicit init wrapper.
+# Mount kernel API filesystems before handing PID 1 to systemd so serial
+# automation and rustup work reliably on the minimal rootfs.
+cat > "${mount_dir}/usr/local/sbin/boring-builder-init" <<'INIT'
+#!/bin/sh
+set -eu
+
+[ -e /proc/self ] || mount -t proc proc /proc
+[ -e /sys/kernel ] || mount -t sysfs sysfs /sys
+[ -e /dev/null ] || mount -t devtmpfs devtmpfs /dev
+
+exec /lib/systemd/systemd "$@"
+INIT
+chmod 0755 "${mount_dir}/usr/local/sbin/boring-builder-init"
+
 install -d -m0755 \
 	"${mount_dir}/etc/systemd/system/serial-getty@ttyS0.service.d" \
 	"${mount_dir}/etc/systemd/system/multi-user.target.wants" \

@@ -120,6 +120,9 @@ func TestUntermBuilderTemplateUsesHeadlessVsock(t *testing.T) {
 	if template.Rootfs != cfg.BuilderRootfs || template.VCPUs != 4 || template.MemSizeMB != 6144 {
 		t.Fatalf("Template() = %+v", template)
 	}
+	if template.InitPath != "/usr/local/sbin/boring-builder-init" {
+		t.Fatalf("Template() init = %q", template.InitPath)
+	}
 	if !template.Vsock || template.Display || template.Snapshot {
 		t.Fatalf("Template() vsock/display/snapshot = %v/%v/%v", template.Vsock, template.Display, template.Snapshot)
 	}

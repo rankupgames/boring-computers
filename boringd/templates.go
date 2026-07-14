@@ -44,6 +44,7 @@ func (c Config) Template(name string) Template {
 			Rootfs:    c.BuilderRootfs,
 			MemSizeMB: c.BuilderMemSizeMB,
 			VCPUs:     c.BuilderVCPUs,
+			InitPath:  "/usr/local/sbin/boring-builder-init",
 			Vsock:     true,
 			Snapshot:  false,
 			Display:   false,
