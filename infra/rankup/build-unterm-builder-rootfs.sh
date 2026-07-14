@@ -12,8 +12,8 @@ cargo_deny_version="${CARGO_DENY_VERSION:-0.18.4}"
 
 platform_for_arch() {
 	case "$1" in
-		x86_64) printf '%s\t%s\n' "x86_64-unknown-linux-gnu" "http://archive.ubuntu.com/ubuntu" ;;
-		aarch64) printf '%s\t%s\n' "aarch64-unknown-linux-gnu" "http://ports.ubuntu.com/ubuntu-ports" ;;
+		x86_64) printf '%s\t%s\t%s\n' "x86_64-unknown-linux-gnu" "http://archive.ubuntu.com/ubuntu" "http://security.ubuntu.com/ubuntu" ;;
+		aarch64) printf '%s\t%s\t%s\n' "aarch64-unknown-linux-gnu" "http://ports.ubuntu.com/ubuntu-ports" "http://ports.ubuntu.com/ubuntu-ports" ;;
 		*) echo "unsupported architecture" >&2; return 1 ;;
 	esac
 }
@@ -28,7 +28,7 @@ if [[ "$(id -u)" -ne 0 ]]; then
 	exit 1
 fi
 
-IFS=$'\t' read -r rust_target ubuntu_mirror < <(platform_for_arch "$(uname -m)")
+IFS=$'\t' read -r rust_target ubuntu_mirror ubuntu_security_mirror < <(platform_for_arch "$(uname -m)")
 
 for command in debootstrap mkfs.ext4 mount mountpoint chroot curl sha256sum; do
 	command -v "${command}" >/dev/null || { echo "missing required command: ${command}" >&2; exit 1; }
@@ -59,6 +59,11 @@ mount -o loop "${image}" "${mount_dir}"
 
 debootstrap --variant=minbase noble "${mount_dir}" "${ubuntu_mirror}"
 cp -f /etc/resolv.conf "${mount_dir}/etc/resolv.conf"
+cat > "${mount_dir}/etc/apt/sources.list" <<EOF
+deb ${ubuntu_mirror} noble main universe
+deb ${ubuntu_mirror} noble-updates main universe
+deb ${ubuntu_security_mirror} noble-security main universe
+EOF
 mount -t proc proc "${mount_dir}/proc"
 mount -t sysfs sysfs "${mount_dir}/sys"
 mount --bind /dev "${mount_dir}/dev"
