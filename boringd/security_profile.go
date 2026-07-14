@@ -40,6 +40,9 @@ func (c Config) Validate() error {
 	if !c.JailerEnable {
 		violations = append(violations, "BORING_JAILER must be 1")
 	}
+	if c.JailerUID != 30000 || c.JailerGID != 30000 {
+		violations = append(violations, "BORING_JAILER_UID and BORING_JAILER_GID must both use the reviewed unprivileged identity 30000")
+	}
 	if !c.CgroupEnable || c.CPUMaxPercent < 1 || c.PidsMax < 1 {
 		violations = append(violations, "cgroup CPU and PID limits must be enabled and positive")
 	}

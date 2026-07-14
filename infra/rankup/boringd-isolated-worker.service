@@ -1,7 +1,8 @@
 [Unit]
 Description=boringd isolated Firecracker build worker
 After=network-online.target boring-net.service
-Wants=network-online.target boring-net.service
+Wants=network-online.target
+Requires=boring-net.service
 
 [Service]
 Type=simple
@@ -9,6 +10,7 @@ EnvironmentFile=/etc/boring/isolated-worker.env
 LoadCredential=boring_token:/etc/boring/boring_token
 Environment=BORING_TOKEN_FILE=%d/boring_token
 ExecStartPre=/usr/local/bin/boringd -check-config
+ExecStartPre=/opt/boring/bin/net-setup.sh --check
 ExecStart=/usr/local/bin/boringd
 WorkingDirectory=/opt/boring
 Restart=on-failure

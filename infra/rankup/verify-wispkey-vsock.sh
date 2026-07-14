@@ -19,19 +19,25 @@ relay_bin="${WISPKEY_RELAY_BIN:-/usr/local/bin/wispkey-vsock-relay}"
 loopback_port="${WISPKEY_LOOPBACK_PORT:-17700}"
 chroot_base="${BORING_CHROOT_BASE:-/srv/jailer}"
 jailer_uid="${BORING_JAILER_UID:-30000}"
-jailer_gid="${BORING_JAILER_GID:-991}"
+jailer_gid="${BORING_JAILER_GID:-30000}"
 
 for command in curl jq base64 sudo; do
 	command -v "${command}" >/dev/null || { echo "missing required command: ${command}" >&2; exit 1; }
 done
-[[ -r "${boring_token_file}" ]] || { echo "boring control token file is not readable" >&2; exit 1; }
 command -v "${wispkey_bin}" >/dev/null || { echo "wispkey command is unavailable" >&2; exit 1; }
 [[ -x "${relay_bin}" ]] || { echo "vsock relay is unavailable" >&2; exit 1; }
+sudo -n test -r "${boring_token_file}" || { echo "boring control token is not readable through sudo" >&2; exit 1; }
 
 work="$(mktemp -d /tmp/boring-wispkey-verify.XXXXXX)"
 chmod 0700 "${work}"
+trap 'rm -rf -- "${work}"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 header_file="${work}/boring.headers"
-printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$(<"${boring_token_file}")" > "${header_file}"
+boring_token="$(sudo -n cat "${boring_token_file}")"
+[[ -n "${boring_token}" ]] || { echo "boring control token is empty" >&2; exit 1; }
+printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "${boring_token}" > "${header_file}"
+unset boring_token
 chmod 0600 "${header_file}"
 
 machine_id=""
@@ -55,7 +61,8 @@ api() {
 
 guest_exec() {
 	command="$1"
-	payload="$(jq -cn --arg command "${command}" '{command:$command,timeout_seconds:60}')"
+	payload="$(printf '%s' "${command}" | jq -Rsc '{command:.,timeout_seconds:60}')"
+	unset command
 	response="$(api POST "/v1/machines/${machine_id}/exec" "${payload}")"
 	[[ "$(jq -r '.exit_code' <<<"${response}")" == "0" ]] || return 1
 	jq -r '.output' <<<"${response}"

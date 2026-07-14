@@ -25,6 +25,8 @@ func TestIsolatedWorkerProfileRejectsUnsafeConfiguration(t *testing.T) {
 		{name: "missing token", configure: func(cfg *Config) { cfg.Token = "" }, want: "required"},
 		{name: "query token", configure: func(cfg *Config) { cfg.AllowQueryToken = true }, want: "ALLOW_QUERY_TOKEN"},
 		{name: "no jailer", configure: func(cfg *Config) { cfg.JailerEnable = false }, want: "BORING_JAILER"},
+		{name: "root jailer", configure: func(cfg *Config) { cfg.JailerUID = 0 }, want: "unprivileged identity"},
+		{name: "unexpected jailer group", configure: func(cfg *Config) { cfg.JailerGID = 991 }, want: "unprivileged identity"},
 		{name: "no cgroups", configure: func(cfg *Config) { cfg.CgroupEnable = false }, want: "cgroup"},
 		{name: "no egress policy", configure: func(cfg *Config) { cfg.NetEnable = false }, want: "BORING_NET"},
 		{name: "multiple machines", configure: func(cfg *Config) { cfg.MaxMachines = 2 }, want: "must both be 1"},
@@ -146,5 +148,7 @@ func validIsolatedWorkerConfig() Config {
 		DisablePreview:   true,
 		DesktopPool:      0,
 		JailerEnable:     true,
+		JailerUID:        30000,
+		JailerGID:        30000,
 	}
 }

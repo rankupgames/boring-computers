@@ -196,7 +196,7 @@ func LoadConfig() Config {
 		JailerEnable:        os.Getenv("BORING_JAILER") == "1",
 		JailerBin:           envStr("BORING_JAILER_BIN", "/opt/boring/bin/jailer"),
 		JailerUID:           envInt("BORING_JAILER_UID", 30000),
-		JailerGID:           envInt("BORING_JAILER_GID", 991),
+		JailerGID:           envInt("BORING_JAILER_GID", 30000),
 		ChrootBase:          envStr("BORING_CHROOT_BASE", "/srv/jailer"),
 	}
 	if c.MaxMachines < 1 {

@@ -96,6 +96,10 @@ chroot "${mount_dir}" /usr/bin/env \
 chroot "${mount_dir}" /usr/bin/env \
 	PATH=/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
 	RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo \
+	/opt/cargo/bin/rustup component add --toolchain "${rust_toolchain}" rustfmt clippy
+chroot "${mount_dir}" /usr/bin/env \
+	PATH=/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+	RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo \
 	/opt/cargo/bin/cargo install --locked --version "${cargo_audit_version}" cargo-audit
 chroot "${mount_dir}" /usr/bin/env \
 	PATH=/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \

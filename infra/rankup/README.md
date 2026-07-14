@@ -9,7 +9,8 @@ WispKey vault credential.
 
 - `DEV-1` is the trusted coordinator and publisher. It owns WispKey and any
   repository write credential.
-- `rug-boring-1` is the dedicated worker VM on separate hardware. It runs
+- `rug-boring-1` is the dedicated worker VM on a hypervisor separate from the
+  coordinator. It runs
   `boringd`, the jailer, the egress firewall, and ephemeral Firecracker guests.
 - The Firecracker guest clones public source, runs deterministic checks, and
   exports a binary Git patch plus checksums. It cannot push.
@@ -17,8 +18,9 @@ WispKey vault credential.
   scope before applying it to a clean trusted checkout.
 
 The worker VM should be provisioned with 4 vCPUs, 8 GiB RAM, 80 GiB local
-storage, nested KVM, and no placement on the stateful service pool. Only the SSH
-alias is used by scripts; no address is committed.
+storage, nested KVM, and no disks or caches on a stateful service dataset. Use a
+host-only network with public-only NAT egress and reach it through the hypervisor
+SSH jump host. Only the SSH alias is used by scripts; no address is committed.
 
 ## Fail-closed profile
 
@@ -30,14 +32,25 @@ refuses to start unless all of these remain true:
 - no bearer token in URLs, no CORS/proxy trust, and no preview routes;
 - one machine, one machine per client, no persistent machines, no published
   templates, and a maximum TTL of 900 seconds;
-- jailer, cgroup CPU/PID limits, and guest egress networking enabled;
+- the reviewed unprivileged jailer UID/GID, cgroup CPU/PID limits, and guest
+  egress networking enabled;
 - no S3 persistence and no Anthropic or OpenRouter key.
 
 The control daemon must retain the host privileges needed for KVM, TAP devices,
 cgroups, and the jailer. Firecracker itself is launched chrooted under the
-unprivileged jailer identity with per-VM CPU, memory, and PID caps.
+unprivileged jailer identity with per-VM CPU, memory, and PID caps. `boringd`
+requires the guest-network service and re-validates its IPv4 egress policy and
+IPv6 bridge block before accepting work; a partial network setup fails closed.
 
 ## Install
+
+Install the checksum-pinned host runtime first. This installs the reviewed
+Firecracker and jailer release, the reviewed CI kernel, Go, the rootfs build
+dependencies, and the unprivileged jailer identity:
+
+```bash
+sudo ./infra/rankup/install-runtime.sh
+```
 
 Build and install the two Go binaries on the worker from a reviewed commit:
 
@@ -53,9 +66,9 @@ credential in an argument, log, or repository file. The nested WispKey
 processes inject them through a child-only environment variable and stdin:
 
 ```bash
-wispkey exec --credential boring-dev2-control-token \
+wispkey exec --credential rug-boring-1-control-token \
   --env BORING_CONTROL_TOKEN -- \
-  wispkey exec --credential boring-dev2-sudo --stdin -- \
+  wispkey exec --credential rug-boring-1-sudo --stdin -- \
   ./infra/rankup/install-control-token.sh rug-boring-1
 ```
 
@@ -72,9 +85,10 @@ The installer fails unless both Firecracker and the jailer report the reviewed
 reviewed upgrade.
 
 The rootfs build uses Ubuntu 24.04, pinned Rust and cargo-tool versions, and no
-Node.js packages. It installs `cargo-audit`, `cargo-deny`, clang, CMake,
-OpenSSL headers, and a guest-side AF_VSOCK request helper. Override tool
-versions only in a reviewed change; the defaults are deliberately not `latest`.
+Node.js packages. It installs `rustfmt`, `clippy`, `cargo-audit`, `cargo-deny`,
+clang, CMake, OpenSSL headers, Python for control-plane file transfer, and a
+guest-side AF_VSOCK request helper. Override tool versions only in a reviewed
+change; the defaults are deliberately not `latest`.
 
 Reach the control API only through a tunnel:
 

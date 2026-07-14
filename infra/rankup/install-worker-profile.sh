@@ -21,8 +21,11 @@ install -d -m0755 /etc/boring /opt/boring/bin
 install -m0644 "${script_dir}/isolated-worker.env" /etc/boring/isolated-worker.env
 install -m0644 "${script_dir}/boringd-isolated-worker.service" /etc/systemd/system/boringd.service
 install -m0755 "${script_dir}/build-unterm-builder-rootfs.sh" /opt/boring/bin/build-unterm-builder-rootfs
+install -m0755 "${script_dir}/../latitude/net-setup.sh" /opt/boring/bin/net-setup.sh
+install -m0644 "${script_dir}/../latitude/boring-net.service" /etc/systemd/system/boring-net.service
 
 systemctl daemon-reload
+systemctl enable boring-net.service
 set -a
 # The installed file is root-owned repository configuration, and sourcing it
 # mirrors systemd's EnvironmentFile for the direct preflight below.
