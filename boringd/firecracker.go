@@ -153,17 +153,18 @@ func (c *Console) closeSubs() {
 // ---------------------------------------------------------------------------
 
 type fcDriver struct {
-	cfg      Config
-	id       string
-	tpl      Template
-	cmd      *exec.Cmd
-	console  *Console
-	sock     string
-	overlay  string
-	vsockUDS string // host path to the vsock UDS (set when template has a display)
-	tap      string // host tap device name (set when networking is enabled)
-	ip       string // guest IP (set for forks, which are re-addressed statically)
-	apiClt   *http.Client
+	cfg        Config
+	id         string
+	tpl        Template
+	cmd        *exec.Cmd
+	console    *Console
+	sock       string
+	overlay    string
+	vsockUDS   string // host path to the vsock UDS (set when template has a display)
+	tap        string // host tap device name (set when networking is enabled)
+	ip         string // guest IP (set for forks, which are re-addressed statically)
+	netEnabled bool   // true only when both host policy and this request allow a NIC
+	apiClt     *http.Client
 
 	// Jailer mode: firecracker runs chrooted + unprivileged. Paths handed to the
 	// firecracker API are relative to the chroot; host-side paths differ.
@@ -189,7 +190,7 @@ func (d *fcDriver) PID() int {
 // configure it over the API socket, start it (or restore a snapshot), and time
 // the boot up to the readiness marker. snapDir, if non-empty, points at a
 // directory containing snapshot_file + mem_file to restore from.
-func bootMachine(cfg Config, id string, tpl Template, snapDir string, restoreNet bool) (*fcDriver, string, int64, error) {
+func bootMachine(cfg Config, id string, tpl Template, snapDir string, restoreNet, requestedNet bool) (*fcDriver, string, int64, error) {
 	if err := os.MkdirAll(cfg.RunDir, 0o755); err != nil {
 		return nil, "", 0, fmt.Errorf("mkdir run dir: %w", err)
 	}
@@ -199,7 +200,14 @@ func bootMachine(cfg Config, id string, tpl Template, snapDir string, restoreNet
 	// Path plan differs between direct and jailed launch. In jailed mode the
 	// firecracker API sees chroot-relative paths; host paths point into the jail.
 	var sock, overlay, chroot string
-	d := &fcDriver{cfg: cfg, id: id, tpl: tpl, jailed: jailed}
+	d := &fcDriver{
+		cfg:        cfg,
+		id:         id,
+		tpl:        tpl,
+		jailed:     jailed,
+		netEnabled: effectiveNetworkEnabled(cfg, requestedNet),
+	}
+	restoreNet = restoreNet && d.netEnabled
 	if jailed {
 		chroot = filepath.Join(cfg.ChrootBase, "firecracker", id, "root")
 		sock = filepath.Join(chroot, "run", "fc.sock")
@@ -348,7 +356,7 @@ func bootMachine(cfg Config, id string, tpl Template, snapDir string, restoreNet
 			log.Printf("machine %s: snapshot restore failed, cold booting: %v", id, err)
 			// The child may be in a bad state; restart cleanly as cold boot.
 			d.Close()
-			return bootMachine(cfg, id, tpl, "", false)
+			return bootMachine(cfg, id, tpl, "", false, d.netEnabled)
 		}
 		mode = "snapshot"
 		bootMS = time.Since(t).Milliseconds()
@@ -368,7 +376,7 @@ func bootMachine(cfg Config, id string, tpl Template, snapDir string, restoreNet
 // coldBoot configures and starts a fresh VM via the firecracker API.
 func (d *fcDriver) coldBoot() error {
 	bootArgs := "console=ttyS0 reboot=k panic=1 pci=off i8042.noaux i8042.nomux random.trust_cpu=on"
-	if d.cfg.NetEnable {
+	if d.netEnabled {
 		// Kernel-level DHCP brings eth0 up before init; dnsmasq hands out a lease.
 		bootArgs += " ip=dhcp"
 	}
@@ -404,7 +412,7 @@ func (d *fcDriver) coldBoot() error {
 	}
 	// Networking: a per-VM tap on the host bridge, NATed out. The tap is owned by
 	// the jailed uid so the (unprivileged) firecracker child can open it.
-	if d.cfg.NetEnable {
+	if d.netEnabled {
 		tap := tapName(d.id)
 		uid := 0
 		if d.jailed {

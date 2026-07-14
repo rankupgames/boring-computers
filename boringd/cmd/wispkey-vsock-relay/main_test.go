@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -19,6 +20,39 @@ func TestValidateLoopbackUpstream(t *testing.T) {
 		if err := validateLoopbackUpstream(address); err == nil {
 			t.Fatalf("validateLoopbackUpstream(%q) unexpectedly succeeded", address)
 		}
+	}
+}
+
+func TestConfigureSocketAccessUsesRequestedOwnerAndPrivateMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "listener")
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	if err := configureSocketAccess(path, os.Getuid(), os.Getgid()); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("socket mode = %o, want 600", got)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("socket stat did not expose ownership")
+	}
+	if int(stat.Uid) != os.Getuid() || int(stat.Gid) != os.Getgid() {
+		t.Fatalf("socket owner = %d:%d, want %d:%d", stat.Uid, stat.Gid, os.Getuid(), os.Getgid())
+	}
+}
+
+func TestConfigureSocketAccessRejectsMissingOwner(t *testing.T) {
+	if err := configureSocketAccess(filepath.Join(t.TempDir(), "missing"), -1, -1); err == nil {
+		t.Fatal("configureSocketAccess() unexpectedly accepted a missing owner")
 	}
 }
 

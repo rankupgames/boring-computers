@@ -18,6 +18,8 @@ wispkey_bin="${WISPKEY_BIN:-wispkey}"
 relay_bin="${WISPKEY_RELAY_BIN:-/usr/local/bin/wispkey-vsock-relay}"
 loopback_port="${WISPKEY_LOOPBACK_PORT:-17700}"
 chroot_base="${BORING_CHROOT_BASE:-/srv/jailer}"
+jailer_uid="${BORING_JAILER_UID:-30000}"
+jailer_gid="${BORING_JAILER_GID:-991}"
 
 for command in curl jq base64 sudo; do
 	command -v "${command}" >/dev/null || { echo "missing required command: ${command}" >&2; exit 1; }
@@ -99,6 +101,7 @@ wispkey_pid=$!
 
 vsock_port_path="${chroot_base}/firecracker/${machine_id}/root/run/vsock_7700"
 sudo -n "${relay_bin}" --listen-unix "${vsock_port_path}" --upstream "127.0.0.1:${loopback_port}" \
+	--socket-uid "${jailer_uid}" --socket-gid "${jailer_gid}" \
 	>"${work}/relay.log" 2>&1 &
 relay_pid=$!
 

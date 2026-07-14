@@ -305,6 +305,7 @@ func (mgr *Manager) hasMemoryFor(tpl Template) bool {
 func (mgr *Manager) Create(template string, ttlSeconds int, net, persistent bool, creatorIP string) (*Machine, error) {
 	ttl := mgr.cfg.ClampTTL(ttlSeconds)
 	persistent = persistent && mgr.cfg.AllowPersistent
+	networkEnabled := effectiveNetworkEnabled(mgr.cfg, net)
 
 	// Per-IP rate + concurrency cap (released in teardown).
 	if err := mgr.limiter.Acquire(creatorIP); err != nil {
@@ -315,7 +316,7 @@ func (mgr *Manager) Create(template string, ttlSeconds int, net, persistent bool
 	// Only for the stock desktop — published templates (even display ones) must
 	// boot from their own snapshot, not a pooled vanilla machine.
 	if mgr.cfg.Template(template).Name == "desktop" && mgr.cfg.DesktopPool > 0 {
-		if m := mgr.claimPooled(creatorIP, ttl, persistent); m != nil {
+		if m := mgr.claimPooled(creatorIP, ttl, persistent, networkEnabled); m != nil {
 			go mgr.refillPool()
 			life := fmt.Sprintf("ttl=%ds", ttl)
 			if persistent {
@@ -352,18 +353,18 @@ func (mgr *Manager) Create(template string, ttlSeconds int, net, persistent bool
 
 	// Use the template's prebuilt snapshot for a fast restore when eligible and
 	// present; bootMachine falls back to a cold boot if the restore fails.
-	// `net` forces a cold boot (the snapshot has no NIC) so the VM gets internet —
-	// unless the snapshot itself was taken WITH a NIC (published template,
-	// RestoreNet), in which case the restore keeps it and we re-address below.
+	// Firecracker snapshots preserve their device model, so only restore one
+	// whose NIC state matches this request. A mismatch cold-boots from its rootfs.
 	snapDir := ""
-	if tpl.Snapshot && (tpl.RestoreNet || !(net && mgr.cfg.NetEnable)) {
+	if templateSnapshotMatchesNetwork(tpl, networkEnabled) {
 		cand := filepath.Join(mgr.cfg.TemplatesDir, tpl.Name)
 		if fileExists(filepath.Join(cand, "snapshot_file")) && fileExists(filepath.Join(cand, "mem_file")) {
 			snapDir = cand
 		}
 	}
 
-	drv, mode, bootMS, err := bootMachine(mgr.cfg, id, tpl, snapDir, tpl.RestoreNet && snapDir != "")
+	restoreNet := networkEnabled && tpl.RestoreNet && snapDir != ""
+	drv, mode, bootMS, err := bootMachine(mgr.cfg, id, tpl, snapDir, restoreNet, net)
 	if err != nil {
 		// Roll back the reservation (and the per-IP slot).
 		mgr.mu.Lock()
@@ -381,8 +382,8 @@ func (mgr *Manager) Create(template string, ttlSeconds int, net, persistent bool
 
 	// A machine restored from a published-with-NIC snapshot resumed on the
 	// publisher's MAC/IP — give it a fresh identity, fork-style.
-	if mode == "snapshot" && (tpl.RestoreNet || tpl.Display) {
-		mgr.readdressFork(id, drv, tpl, tpl.RestoreNet, "")
+	if mode == "snapshot" && (restoreNet || tpl.Display) {
+		mgr.readdressFork(id, drv, tpl, restoreNet, "")
 	}
 
 	mgr.mu.Lock()
@@ -492,7 +493,7 @@ func (mgr *Manager) BranchN(id, creatorIP string, count int) ([]*Machine, error)
 
 	var booted []*Machine
 	for i, child := range children {
-		drv, mode, bootMS, err := bootMachine(mgr.cfg, child.ID, tpl, snapDir, srcHadNIC)
+		drv, mode, bootMS, err := bootMachine(mgr.cfg, child.ID, tpl, snapDir, srcHadNIC, srcHadNIC)
 		if err != nil {
 			mgr.rollback(child.ID)
 			log.Printf("branch %s: restore %d/%d failed: %v", id, i+1, len(children), err)
@@ -526,6 +527,17 @@ func (mgr *Manager) BranchN(id, creatorIP string, count int) ([]*Machine, error)
 		return nil, ErrSnapshotUnavailable
 	}
 	return booted, nil
+}
+
+func effectiveNetworkEnabled(cfg Config, requested bool) bool {
+	return cfg.NetEnable && requested
+}
+
+// A Firecracker snapshot preserves its device model. Restoring a snapshot with
+// a NIC for a net:false request would silently bypass the request-level egress
+// boundary, while restoring a snapshot without one cannot add a NIC afterward.
+func templateSnapshotMatchesNetwork(tpl Template, networkEnabled bool) bool {
+	return tpl.Snapshot && tpl.RestoreNet == networkEnabled
 }
 
 // readdressFork gives a snapshot-restored machine that resumed on its source's

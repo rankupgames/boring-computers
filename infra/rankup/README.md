@@ -131,6 +131,9 @@ substitution. The harness proves this sequence through guest AF_VSOCK:
 
 The harness suppresses guest TTY echo while injecting the one-time instance
 identity, never prints token values, and revokes/deletes its disposable state.
+The relay assigns its private `0600` Firecracker port socket to the configured
+jailer UID/GID, so the unprivileged Firecracker process can connect without
+making the credential channel available to other host users.
 For a separated production topology, run WispKey on the coordinator with
 identity required, carry its loopback listener through an SSH tunnel, and point
 `wispkey-vsock-relay` only at the worker's loopback end. The relay rejects
@@ -150,6 +153,8 @@ bash -n infra/rankup/*.sh
 npm ci
 npm run check
 npm test
+npm run lint
+npm run build
 ```
 
 The repository `.npmrc` enforces `min-release-age=7`; use npm 11.14.1 or newer

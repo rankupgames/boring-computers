@@ -23,7 +23,12 @@ install -m0644 "${script_dir}/boringd-isolated-worker.service" /etc/systemd/syst
 install -m0755 "${script_dir}/build-unterm-builder-rootfs.sh" /opt/boring/bin/build-unterm-builder-rootfs
 
 systemctl daemon-reload
-/usr/local/bin/boringd -check-config
+set -a
+# The installed file is root-owned repository configuration, and sourcing it
+# mirrors systemd's EnvironmentFile for the direct preflight below.
+source /etc/boring/isolated-worker.env
+set +a
+BORING_TOKEN_FILE=/etc/boring/boring_token /usr/local/bin/boringd -check-config
 
 if [[ "${1:-}" == "--start" ]]; then
 	systemctl enable --now boringd.service

@@ -51,7 +51,9 @@ func (mgr *Manager) warmDesktop() {
 	mgr.machines[id] = m
 	mgr.mu.Unlock()
 
-	drv, mode, bootMS, err := bootMachine(mgr.cfg, id, tpl, "", false)
+	// The primary desktop and agent flows request the default offline profile.
+	// Connected workstations cold-boot so they receive an explicitly requested NIC.
+	drv, mode, bootMS, err := bootMachine(mgr.cfg, id, tpl, "", false, false)
 	if err != nil {
 		mgr.mu.Lock()
 		delete(mgr.machines, id)
@@ -79,13 +81,16 @@ func (mgr *Manager) warmDesktop() {
 
 // claimPooled hands a ready pooled desktop to a user, re-timed to their TTL.
 // Returns nil if the pool is empty.
-func (mgr *Manager) claimPooled(creatorIP string, ttl int, persistent bool) *Machine {
+func (mgr *Manager) claimPooled(creatorIP string, ttl int, persistent, networkEnabled bool) *Machine {
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
 	if len(mgr.pool) == 0 {
 		return nil
 	}
 	m := mgr.pool[0]
+	if m.driver == nil || m.driver.netEnabled != networkEnabled {
+		return nil
+	}
 	mgr.pool = mgr.pool[1:]
 	m.pooled = false
 	m.creatorIP = creatorIP

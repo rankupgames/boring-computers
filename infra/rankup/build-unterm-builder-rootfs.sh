@@ -10,16 +10,25 @@ rust_toolchain="${RUST_TOOLCHAIN:-1.91.1}"
 cargo_audit_version="${CARGO_AUDIT_VERSION:-0.21.2}"
 cargo_deny_version="${CARGO_DENY_VERSION:-0.18.4}"
 
+platform_for_arch() {
+	case "$1" in
+		x86_64) printf '%s\t%s\n' "x86_64-unknown-linux-gnu" "http://archive.ubuntu.com/ubuntu" ;;
+		aarch64) printf '%s\t%s\n' "aarch64-unknown-linux-gnu" "http://ports.ubuntu.com/ubuntu-ports" ;;
+		*) echo "unsupported architecture" >&2; return 1 ;;
+	esac
+}
+
+if [[ "${1:-}" == "--print-platform" ]]; then
+	platform_for_arch "${2:-$(uname -m)}"
+	exit
+fi
+
 if [[ "$(id -u)" -ne 0 ]]; then
 	echo "run as root" >&2
 	exit 1
 fi
 
-case "$(uname -m)" in
-	x86_64) rust_target="x86_64-unknown-linux-gnu" ;;
-	aarch64) rust_target="aarch64-unknown-linux-gnu" ;;
-	*) echo "unsupported architecture" >&2; exit 1 ;;
-esac
+IFS=$'\t' read -r rust_target ubuntu_mirror < <(platform_for_arch "$(uname -m)")
 
 for command in debootstrap mkfs.ext4 mount mountpoint chroot curl sha256sum; do
 	command -v "${command}" >/dev/null || { echo "missing required command: ${command}" >&2; exit 1; }
@@ -48,7 +57,7 @@ dd if=/dev/zero of="${image}" bs=1M count=0 seek="${image_size_mb}" status=none
 mkfs.ext4 -q -F -O '^has_journal' "${image}"
 mount -o loop "${image}" "${mount_dir}"
 
-debootstrap --variant=minbase noble "${mount_dir}" http://archive.ubuntu.com/ubuntu
+debootstrap --variant=minbase noble "${mount_dir}" "${ubuntu_mirror}"
 cp -f /etc/resolv.conf "${mount_dir}/etc/resolv.conf"
 mount -t proc proc "${mount_dir}/proc"
 mount -t sysfs sysfs "${mount_dir}/sys"
